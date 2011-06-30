@@ -63,6 +63,13 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <multimedia/libaudio.h>
 #endif
 
+#ifdef __hpux
+#include "simpleAudio.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#endif
+
 /* Timer stuff. Experimental.*/
 #include <time.h>
 #include <signal.h>
@@ -994,8 +1001,39 @@ I_SubmitSound(void)
 #ifndef DOOM_NO_SFX
   if (SoundDisabled == 0)
   {
+#ifdef __hpux
+    /* Throttle writes: I_SubmitSound is called 35x/sec but UseFrequency is
+       11025Hz, so without throttling we write 1.6x faster than playback and
+       the Aserver buffer fills up causing growing lag. Track queued samples
+       against real-time and skip writes when we're more than 2 buffers ahead. */
+    {
+      static struct timeval prev = {0, 0};
+      static int hp_queued = 0;
+      struct timeval now;
+      long usec_diff;
+      int consumed;
+
+      gettimeofday(&now, NULL);
+      if (prev.tv_sec == 0) { prev = now; hp_queued = 0; }
+
+      usec_diff = (now.tv_sec - prev.tv_sec) * 1000000L +
+                  (now.tv_usec - prev.tv_usec);
+      consumed = (int)((long)usec_diff * UseFrequency / 1000000L);
+      prev = now;
+
+      hp_queued -= consumed;
+      if (hp_queued < 0) hp_queued = 0;
+
+      if (hp_queued < 2 * SampleCount)
+      {
+        write(audio_fd, mixbuffer, MixBufferSize);
+        hp_queued += SampleCount;
+      }
+    }
+#else
     /* Write it to DSP device.*/
     write(audio_fd, mixbuffer, MixBufferSize);
+#endif
   }
 #endif
 #endif
@@ -1048,6 +1086,9 @@ void I_ShutdownSound(void)
 
 #ifdef __riscos__
   RemoveDoomSound();
+#elif defined(__hpux)
+  closeAStream(audio_fd);
+  closeAudio();
 #else
   /* Cleaning up -releasing the DSP device.*/
   close ( audio_fd );
@@ -1206,6 +1247,22 @@ I_InitSound(void)
       head.endian = AUDIO_ENDIAN_BIG;
       audio_set_play_config(audio_fd, &head);
     }
+#elif defined(__hpux)
+    if (openAudio() != 0)
+    {
+      fprintf(logfile, "Could not connect to HP audio server\n");
+      return;
+    }
+    audio_fd = openAStream(PLAY_STREAM, UseFrequency, USE_STEREO,
+                           USE_LIN16, USE_DEFAULT_SPEAKER, START_IMMEDIATELY);
+    if (audio_fd < 0)
+    {
+      fprintf(logfile, "Could not open HP-UX audio stream\n");
+      closeAudio();
+      return;
+    }
+    fcntl(audio_fd, F_SETFL, fcntl(audio_fd, F_GETFL) | O_NONBLOCK);
+    fprintf(logfile, "using HP Alib 16bit linear stereo; ");
 #else
     audio_fd = open("/dev/dsp", O_WRONLY);
     if (audio_fd<0)
@@ -1564,8 +1621,8 @@ static void I_HandleSoundTimer( int ignore )
   /* Write it to DSP device.*/
 #ifndef __riscos__
     int 			blocks = 0;
-#ifdef __sun
-    /* Synchronize via the timer; somewhat crude, but works OK on Solaris*/
+#if defined(__sun) || defined(__hpux)
+    /* Synchronize via the timer; somewhat crude, but works OK on Solaris/HP-UX*/
     struct timeval	tp;
     struct timezone	tzp;
     int			need_samples;
