@@ -65,6 +65,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 #ifdef __hpux
 #include "simpleAudio.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #endif
 
 /* Timer stuff. Experimental.*/
@@ -998,8 +1001,39 @@ I_SubmitSound(void)
 #ifndef DOOM_NO_SFX
   if (SoundDisabled == 0)
   {
+#ifdef __hpux
+    /* Throttle writes: I_SubmitSound is called 35x/sec but UseFrequency is
+       11025Hz, so without throttling we write 1.6x faster than playback and
+       the Aserver buffer fills up causing growing lag. Track queued samples
+       against real-time and skip writes when we're more than 2 buffers ahead. */
+    {
+      static struct timeval prev = {0, 0};
+      static int hp_queued = 0;
+      struct timeval now;
+      long usec_diff;
+      int consumed;
+
+      gettimeofday(&now, NULL);
+      if (prev.tv_sec == 0) { prev = now; hp_queued = 0; }
+
+      usec_diff = (now.tv_sec - prev.tv_sec) * 1000000L +
+                  (now.tv_usec - prev.tv_usec);
+      consumed = (int)((long)usec_diff * UseFrequency / 1000000L);
+      prev = now;
+
+      hp_queued -= consumed;
+      if (hp_queued < 0) hp_queued = 0;
+
+      if (hp_queued < 2 * SampleCount)
+      {
+        write(audio_fd, mixbuffer, MixBufferSize);
+        hp_queued += SampleCount;
+      }
+    }
+#else
     /* Write it to DSP device.*/
     write(audio_fd, mixbuffer, MixBufferSize);
+#endif
   }
 #endif
 #endif
@@ -1227,6 +1261,7 @@ I_InitSound(void)
       closeAudio();
       return;
     }
+    fcntl(audio_fd, F_SETFL, fcntl(audio_fd, F_GETFL) | O_NONBLOCK);
     fprintf(logfile, "using HP Alib 16bit linear stereo; ");
 #else
     audio_fd = open("/dev/dsp", O_WRONLY);
