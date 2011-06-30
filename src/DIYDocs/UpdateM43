@@ -1,0 +1,186 @@
+DOOM IT YOURSELF 4.3
+====================
+
+
+
+For general information on how to install DIY see the previous UpdateM* files
+and the ReadMe file that came with the original DIY (except that the patching
+phase is no longer relevant since DIY comes with full source code now).
+
+
+
+News 4.3:
+---------
+
+- Switched to GCC 2.95.2, although it's still beta. The compiler as such is
+  much more reliable (if you look through the DIY code you'll find lots of
+  bits I had to add to prevent the 2.7.2 optimizer from killing the code),
+  but there are still some problems in the environment which need to be ironed
+  out:
+
+  + the command line is too short, that's why I have to use drlink directly to
+    link the executable; since this also requires the internal gcc runtime lib
+    I need the rather ugly GCCbin:arm-riscos.2_95_2.o.libgcc as lib. I didn't
+    see another way around this, unfortunately.
+  + the SCL stubs contains the errno symbol which clashes with socketlib. So
+    unfortunately it looks like you can't use SCL and socketlib ATM, you'll
+    have to use UnixLib to get a binary with net support. Since DIY has been
+    able to use dynamic areas since version 4.2, the new UnixLib seems to be
+    faster than the old one and the binary is rather large anyway, this
+    shouldn't be too bad unless you're using a pre-RiscPC machine.
+  + the assembler as is currently not exported but kept internal, but DIY
+    needs an AOF assembler, so there are two possible approaches:
+    1) set AS to GCCbin:arm-riscos.2_95_2.as in the Makefile
+    2) *set Alias$as GCCbin:arm-riscos.2_95_2.as from the CLI. This is what
+       I did in my boot sequence because I need an assembler quite often and
+       I don't want to put the GCC version in the DIY Makefile.
+
+  Another problem in GCC 2.95.2 is that it needs much more resources than
+  GCC 2.7.2 both in terms of memory and (foremost of all) in terms of processing
+  power. Can't change that, unfortunately; but at least the optimizer seems
+  very reliable so far. Please note that the source code itself should still
+  compile perfectly alright on GCC 2.7.2, most of the changes are related to
+  the environment.
+  Note: the way to differentiate between UnixLib 3.7 and 3.8 is to include
+  unistd.h and check for __UNAME_NO_PROCESS which is only defined in 3.7.
+
+- Changed the target names in the Makefile. The old targets (normal, high,
+  true, boom, ...) can still be used, but the new names are easier to remember
+  (at least for me): doom8, doom16, doom16t, doom16rt, doom32, doom32t, doom32r,
+  doom32rt, boom8, boom16, boom16r, boom32 and boom32r.
+
+- Fixed bug in assembler plotters that caused sprites being clipped wrong in
+  high resolution modes when DIYNOSHORT was not defined.
+
+- Fixed bug that sometimes caused borders not being cleared when they should,
+  resulting in annoying flickering.
+
+- Use a big blockmap in Boom mode. The original map had short as base type.
+  While this had never caused problems to me for a long time, recently I took
+  ``Demonized'' upon me and if you have the small blockmap only there are areas
+  at the extreme top of the map that are inaccessible and therefore the level
+  can't be completed regularily. Now with the big blockmap there are no more
+  problems except that Demonized is _much_ too big a level to run anywhere near
+  comfortable speed even on a SA RPC (initially, with all monsters present,
+  savegames are around 500kB large!).
+
+- Fixed some very rare savegame bugs related to the boss brain.
+
+- Fixed savegame error originating from the Boom sources that could cause bad
+  crashes in Boom and/or the new savegame format (e.g. map06 when picking
+  up the red or yellow keys after saving a game).
+
+- Changed r10 to be a counter in all plotters (i.e. a small value, much smaller
+  than &8000). The net effect is that you can use the resampling engine with
+  the Shared C Library again without getting freezes! At least I played the
+  first 13 levels of Doom ][ on Ultra Violence without getting a single freeze.
+  Since that was all I changed it's pretty clear that it was indeed a bug in
+  the SCL that caused the freezes. Since r10 is now a (small) counter, the SCL
+  can always recognize it's not a valid stack limit pointer in its IRQ code and
+  won't freeze anymore (at least not as far as I can tell).
+
+- Wrote GameSupport module for a safe interface to frame buffer and sound
+  vector and modified the DIY source to use the module. The reason for this
+  approach is that sometimes you get really bad crashes (``No stack for trap
+  handler'') which have the effect that no exit/abort handlers installed in
+  the program are called anymore and it is therefore mapped out without
+  giving you a chance to deinstall any vectors (typically frame buffer and
+  sound refill code) you might have claimed. The end result is that your
+  machine is crashed completely. The module sits on the operating system's
+  exit handler and deinstalls these vectors so it should be very safe
+  against bad crashes -- let's hope for the best! For documentation about
+  the module see the file GameSupp in the DIYDocs directory.
+  Note that this means that you have to make sure the module is loaded
+  before starting DIY. The !Run-file provided with this archive was
+  changed accordingly. If you're using my frontend, include the module
+  loading commands in the ``quote'' environment, e.g.
+
+  quote
+  {
+	| Load the game support module for safe frame buffer and sound
+	rmensure GameSupport 0.00 rmload Doom:GameSupp
+	rmensure GameSupport 0.00 error "Couldn't load GameSupport module!"
+  }
+
+  If you're using another frontend: pester the author.
+
+
+- You can use 16bit sound now without having to hack around yourself with
+  Tom Olsson's old code (which must be completely incompatible by now and
+  was therefore removed from this release, so don't start looking for the
+  NewSound directory anymore).
+  To enable 16bit sound (which you should only do if you have the right
+  hardware!) you have to make sure there's a line reading
+  	16bit_sound		1
+  in your doomrc file. To verify which sound you're using, check the
+  Doom:log file after running the game, the first line starting with
+  I_InitSound also contains the type used.
+
+- Map overlay mode and simple anti-aliasing automap line drawing in true
+  colour modes (16bpp, 32bpp) by Darren Salt. That means you can display
+  the map over the normal 3D playfield. To activate this mode, hold down the
+  backquote key (`) and (keeping it depressed) press TAB. In overlay mode,
+  map keys are not claimed unless the backquote is depressed at the same
+  time so the overlay map doesn't interfere with the normal game keys.
+
+- Darren also changed the assembler files a little syntactically, IIRC to
+  make them work with objasm.
+
+- Map keys are now user-configurable too. Just edit the doomrc file and
+  use whatever keys you want for the automap. The defaults are the same
+  keys as before, so if you don't want to change anything you don't have
+  to.
+
+- You can configure which handlers of the GameSupport module you want to
+  install. This is pretty low-level stuff, you shouldn't play around with
+  this if you don't know what you're doing. This can only make a difference
+  on crashes, BTW. The handlers to install are determined by the resource
+  ``insthandflags'' in your doomrc file. This is a bitfield where each
+  bit tells whether to install a specific handler (bit = 1) or not. Currently
+  used bits are:
+  	0:	exit handler
+  	1:	system-level abort handler
+  	2:	stack fixer (only if bit 1 set as well)
+  By default all handlers are installed (insthandflags = 7). Note that bit 2
+  is ignored if you're using UnixLib because the stack layout is highly SCL
+  specific.
+
+- Cleaned up some filing system specific bits so there are quite a lot fewer
+  #ifdef __riscos__ statements in the source. As a side-effect, the directory
+  to use for savegames can now be specified on Unix too: set DOOMGAMEPATH to
+  point to the directory with the trailing '/' before starting the game and
+  games will be read from / written to there.
+
+- Fewer dependencies from ROsupport.h, compiles much faster after changes
+  to this file (OK, this is mostly good for myself ;-) ).
+
+- Fixed some bugs regarding demo recording with FULL_NEW_FEATURES defined.
+  In this case you can force recording a traditional demo by adding the
+  switch -normaldemo to the command line.
+
+- Small bugfixes in mpp to make sure \<char> works for quoting arbitrary
+  chars.
+
+
+
+Andreas Dehmel, 23-Aug-2001
+
+
+
+
+
+	Sold into slavery down in New Orleans,
+	goddess of the Bayou light
+	Black dog's head on the killing bed
+	severed and left to bleed
+	There on fire in the corner of the world
+	there in misery
+	There on fire in the corner of the world
+	left for God to see
+	
+	Do you want to take a life?
+	Do you want to cross that line?
+	Cause it's a long way back from hell
+	and you don't want to go with me...
+	
+		(Danzig - Long way back from hell)

@@ -1,0 +1,11 @@
+Patch File for DeHackEd v3.0
+
+# Example on how to use the new stuff in DIYM3 from DeHackEd.
+# Monster infight can be either 202 for off or 221 for on (yes, it's an X86
+# assembler hack). Homing Missiles and Player Jump are activated if they are
+# assigned a value != 0.
+
+Misc 0
+Monsters Infight = 221
+Homing Missiles = 1
+Player Jump = 1

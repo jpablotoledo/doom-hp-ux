@@ -1,0 +1,128 @@
+DOOM IT YOURSELF 3.4
+====================
+
+
+
+
+For general information on how to update see the previous UpdateM*-files.
+
+
+IMPORTANT NOTE RE PATCH:
+------------------------
+
+In case you're using GNU patch (there is a port by Darren Salt) you have to
+modify the files rep_patch and rep_updt contained in this directory. In both
+files you have to change the sequence reading ``patch -s ...'' with
+``patch -s -l ...'' (ignore whitespace). GNU patch should work fine then.
+
+
+
+
+
+NEWS:
+-----
+
+- Fixed clipping bugs in plotters.
+- Fixed sound-bug in E?M8 levels (sound could be _way_ too loud in these).
+- Sky now resampled too in resampling mode.
+- visplanes only take up as much memory as required for the actual resolution
+  used, not the maximum resolution.
+- visplanes and drawsegs are no longer static but can be extended dynamically.
+  That means that as long as enough memory for bigger structures can be claimed
+  everything will be OK (including e.g. Boom WADs). If too little memory is free
+  you'll get odd redraws but no aborts.
+- Maximize Z_Zone memory on startup with binary search up to a granularity of
+  64k. Incremented maximum Z_Zone size to 16MB (heck, why not... ?)
+- Optionally the Z_Zone can be replaced by calls to the native memory subsystem,
+  i.e. malloc/free, by compiling c.z_zone with NATIVE_MEMORY_ALLOCATION defined.
+  HOWEVER this system doesn't behave well at all if it's running out of memory,
+  so its use is only recommended on Unix systems. As far as performance goes
+  the real Z_Zone should perform a lot better; the only reason why I did this
+  horrible hack was to be able to hunt down memory errors in Z_Zone blocks
+  using Purify on Solaris. So courtesy of NATIVE_MEMORY_ALLOCATION there are
+  now a couple less bugs in the code; but don't play around with this anyway,
+  I only documented it for completeness.
+- Fixed fixpoint arithmetic on RISC OS: it now behaves exactly like on other
+  platforms, so the demos work OK (and are enabled even when they're from an
+  older version). Demos from Ultimate Doom and Doom ][ all work; most demos
+  in add-on WADs work too but some of them go wrong after about 5-10 minutes
+  (the second one in Eternal III, one in Memento Mori II, ...). The reason for
+  this is not the fixpoint-arithmetic, however: they go wrong in exactly the
+  same way using the original fixpoint code too and I verified this by comparing
+  the output of each and every fixpoint-operation and they were identical.
+  Looks like the problems always occur when the player gets stuck to enemies,
+  most of all Lost Souls, or maybe Lost Souls in particular are using a slightly
+  different strategy. If anybody can fix this, I'd really appreciate it with
+  regard to the Hell Revealed demos.
+  NB: this means that demos you recorded with older versions of DIY will no
+  longer work with DIY3.4. OTOH, they should work OK on other platforms and
+  netgames with non-DIY executables should work fine too.
+- Fixed add-on demos: when you specify a pathname as argument to -playdemo (i.e.
+  contains a '$' or a ':') the demo isn't looked for in Doom:Demos but at the
+  absolute path given. Recorded demos are still stored in Doom:Demos, though;
+  since you can always copy them somewhere else this shouldn't be a problem.
+- Added atexit handler for improved security.
+- Sound now handled via voice generators by default, so you don't need the
+  DigitalRenderer module any more. That should be a first and important step
+  towards concurrent other sounds (music etc). If you're using my DIY frontend
+  you should get the latest version (1.13) which doesn't have the DigitalRenderer
+  rmensures hard-coded anymore so the module isn't even loaded anymore.
+  You can still use the DigitalRenderer module by commenting SOUND_USE_VOICES
+  in c.i_sound.
+- Fixed potential problem in decompression code.
+- Optional transparency for explosions, plasma, ... by Darren Salt. I added
+  the 16bpp and 32bpp resampling plotters. Transparency is switched on when
+  the macro USE_TRANSPARENCY is defined at compile-time. New targets for this
+  in the Makefile are hight, truet and resamplet. Transparency is not implemented
+  for 8bpp.
+  For engines compiled with USE_TRANSPARENCY defined you can switch transparency
+  on or off at run-time using the new cheat ``dstrans''.
+- Added a cheat ``adfight'' for toggling monster-infighting mode (formerly only
+  available through a dehacked script). In case you're unfamiliar with the
+  concept: this makes monsters like imps, barons and yes, even Cyberdemons,
+  fight their own kind.
+
+  
+
+
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 04-Jul-99.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de

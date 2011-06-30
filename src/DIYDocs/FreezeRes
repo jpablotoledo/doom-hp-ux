@@ -1,0 +1,106 @@
+DIY resampling engines on RISC OS
+=================================
+
+
+Ever since I added this feature to Doom there have been freezes. For
+a while I didn't investigate these any further because I couldn't
+even run the engine on my A5000. Then I changed the plotters and
+added a resampling engine for 16bpp so I could also (in theory) run
+in on the A5000; apart from that I finally got a 2nd hand RiscPC so
+I could really put it to the test. I can list the following facts
+which leave me no other interpretation than blame it on the Shared
+C Library.
+Let me first note that we're not really talking crashes but rather
+freezes here. IRQ still seems to be OK since I definitely had the
+case where the machine froze and the chainsaw sound kept playing
+for a second. So to me this looks like the engine got stuck in an
+infinite loop with the processor in SVC mode, because Alt-brk didn't
+work any more.
+
+ 1) Playing back demos _never_ freezes the machine. I can run demos
+    back-to-back for 4 hours without the slightest problem. That's a
+    strong hint that it has nothing to do with the plotters, IMHO.
+
+ 2) Playing the game with a non-resampling engine will never cause
+    freezes in the engine. As a matter of fact I can't even remember
+    when a normal engine crashed on me the last time, it's running
+    rock solid.
+
+ 3) Playing the game with the resampling engine will freeze the machine
+    sooner or later. The longest I managed to play so far without freezes
+    was 7 Doom levels, normally you get them at the latest in level 3.
+    Freezes have been known to occur in level 1 before you've even killed
+    the first guy. Freezes seem to happen usually when you either press or
+    release a key.
+
+ 4) The DIY engine is purified under Solaris, i.e. the shared C source
+    is 100% OK and doesn't contain any memory errors whatsoever, at least
+    for standard Doom ][.
+
+ 5) Running the game without any code in privileged processor modes
+    (asynchronous frame buffer, sound fill code) does _not_ fix the
+    crashes! Therefore it can't be one of DIY's handlers running amuck
+    either.
+
+ 6) Building an engine linked against UnixLib seems to fix the freezes.
+    At a time I played the first 13 Doom ][ levels in one session
+    with a UnixLib binary and it just kept going and going, then I
+    got tired, I guess it would have kept going for many more hours.
+    Other beta testers have confirmed this.
+
+ 7) Disabling resampling for spans (floors/ceilings) only seems to fix
+    the freezes (now it's getting really bizarre, isn't it?). I can't
+    see _anything_ wrong with the span code at all, but if anyone does
+    please feel free to mail me the changes. And an explanation why it
+    didn't affect demo playback.
+
+ 8) It can't be the stack. None of my assembler stuff needs more than
+    around 100 bytes on the stack (256 are guaranteed by APCS) and I
+    ran with some stack safeguards once, without any luck.
+
+ 9) Builing a version with DIYDEBUGPLOT defined (i.e. check the
+    validity of all pixels before writing) did not fix the freezes.
+
+10) Between the introduction in DIY3.3 and the current DIY4.1 the
+    plotter code has been _completely_ rebuilt (now created auto-
+    matically out of macros), so apart from general principles the
+    plotters in 3.3 have little to nothing in common with the ones
+    in 4.1 The crashes remained.
+
+11) After I noticed the rather horrible results of an address exception
+    in a C environment when R11 is corrupted I built a RISC OS-level
+    abort handler that comes before the C abort handler and tries to
+    restore R11 by reading it from the stack. Tests with various
+    plotters showed that this code works fine, so even an abort with
+    corrupted R11 can't be the cause of these freezes.
+
+12) This behaviour is not limited to one RPC or RPCs in general, even
+    my A5000 did it.
+
+13) This happens with GCC2.7.2, GCC2.9.5 and Norcroft.
+
+Does this make any sense to you? Because I'm totally at a loss now.
+1), 4), 6) and 13) seem to me very strong hints that something's wrong
+with the SCL here. Because 9) rules out the stack I can only guess
+it has something to do with keyboard input, and I actually got confirmation
+from Robin Watts that occasionally the keyboard handler code can be called
+with IRQs enabled (which should be disabled).  Another guess is that some
+IRQ code might expect a valid R11=frame pointer which will not be granted 
+within an assembler plotter, only on entry/exit (which is valid APCS for
+all I know). Apart from that I really don't know any more. 
+
+In other words: I've done everything I could think of to cure the bug
+(as a matter of fact DIY 4.1 would have been released much earlier if I
+hadn't spent so much time trying to fix the bug), I won't do any more
+in this respect. If you want a resampling version that doesn't freeze
+you'll either have to find and fix the bug yourself, use a UnixLib binary
+or remove DIYARMASS from ASCCFLAGS and use the C plotters instead (which
+of course will be much slower, but the difference may not be too dramatic
+on a SA RPC).
+
+
+
+
+
+Andreas Dehmel
+23-Apr-2000

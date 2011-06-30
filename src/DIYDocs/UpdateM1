@@ -1,0 +1,280 @@
+WELCOME TO THE FIRST MAJOR UPDATE FOR DOOM IT YOURSELF
+======================================================
+
+
+
+
+Updates and how we'll handle them:
+----------------------------------
+
+Updates come in two cathegories: major ones and minor ones. Major ones always
+need the unmodified Acorn Doom sources as base (i.e. the ones you got after
+running the original DIY's !Patch), minor ones use the last major update state
+as base. Thus a new major update automatically overrides all major and minor
+updates that predate it.
+The way I'd like to handle updates is the following: you just merge the update
+archive's DoomItYs directory with the original DoomItYs directory, set your CSD
+to the DoomItYs directory and run !Update. For future major updates you must also
+delete the directories NewDiffs and NewFull created by the previous major update
+in the DoomItYs directory first (but since this is the first major update you can
+ignore that for now). So for the time being just copy the contents of the update's
+DoomItYs directory into the original DoomItYs directory.
+When running !Update you'll have to enter the source and destination directories.
+The source directory must contain the unmodified sources you got from installing
+the original DoomItYourself sources. If you want to be able to update DIY you must
+always keep these sources around and NOT CHANGE THEM! Stuff them in an archive if
+you're running out of space, but keep an unmodified version handy. Also make sure
+the source and destination paths you specify are not the same directory. The
+installer will work alright, but it'll overwrite the original sources in that case,
+so beware.
+If all went well here you're now ready to compile the latest version of DIY. By
+default all new features are enabled, but if you want to tune it you should read
+the following list of news and how they're handled first.
+
+
+
+
+				************
+				*** NEWS ***
+				************
+
+
+- NET SUPPORT
+  ------------
+  In your source directory are now the files c.i_net and c.i_net0. c.i_net0 is the
+  dummy used in the original DIY distribution.
+
+  1) I don't want net support: delete c.i_net (in case you need it later there's a
+     copy in DoomItYs.FullFiles.c.i_net), rename c.i_net0 to c.i_net and change the
+     variables NETINC and NETLINK in the Makefile to empty strings (e.g. ``NETINC ='').
+
+  2) I want net support: in that case you need Acorn's socketlib which can be
+     downloaded from ftp://ftp.acorn.co.uk/riscos/releases/networking/tcpip/sockets.arc
+     Then you either have to copy then contents of this archive to C:Sockets (C$Path
+     points to the directory containing the SharedCLibrary headers and stubs), which
+     is the location specified in the Makefile. Otherwise you have to adapt the paths
+     specified in NETINC and NETLINK. You might have to play around with port numbers
+     to make it run.
+
+
+- DYNAMIC RESOLUTIONS
+  -------------------
+  You don't have to hard-code the resolutions into the code anymore. The default now
+  is to use dynamic resolutions which makes Doom use whatever resolution it finds on
+  startup, up to a maximum resolution which has to be set in h.doomdef (those are
+  the variables MAXSCREENWIDTH and MAXSCREENHEIGHT). Be warned though, that the larger
+  these values are the more memory is used (although it's hardly noticable on my 8MB
+  machine), so keep those values in areas that you're actually planning to use instead
+  of using 1600*1200 on a what-the-fuck basis. Also bear in mind that Doom needs at
+  least two frame buffers, so 1280*1024 is not possible in 2MB VRAM anyway.
+  If you don't want dynamic resolutions you have to add -DSTATIC_RESOLUTION to CFLAGS
+  in the Makefile and compile the whole thing again (deleting all object-files first).
+  As far as speed goes I didn't notice any difference between static and dynamic
+  resolutions, but the little extra memory might be handy for 4MB systems.
+  There are two new switches for Doom: ``-resx #'' and ``-resy #'' where ``#'' is the
+  corresponding number. -resx is merely for symmetry and because it might be helpful
+  when porting DIY to other systems, you shouldn't use this switch. -resy OTOH can be
+  helpful if you want to make Doom's resolution smaller than the current screen
+  resolution (e.g. running Doom at 320*200 in a 320*256 mode).
+
+
+- INBUILT DEHACKED SUPPORT
+  ------------------------
+  Other systems have to patch their executable, we just add ``-dehack <patchfile>''
+  when calling Doom :-). Many thanks to Greg Lewis (gregl@umich.edu) for allowing me
+  to include part(s) of his source in DIY.
+  Patch files must have the ``/DEH'' extension! If you give a full pathname that'll
+  be used, if you just give a leafname this file will be searched for in the directory
+  Doom:DeHackEd. If you want to specify multiple DeHackEd files you just write them
+  all space-separated after the -dehack[1] switch. All arguments following this switch
+  will be interpreted as patch files, until either an argument begins with a `-'
+  (i.e. a new switch) or the end of the argument list is reached.
+  Due to the nature of DeHackEd it's very hard to support something like this
+  machine-independently, and it required changes all over the place. Don't expect
+  perfect emulation, some things use much too much DOS-specific stuff and can
+  give you problems. I tried to split this up into safe emulation with the switch
+  ``-dehack'' and a more complete but messy emulation using ``-dehack1''. The
+  difference between the two is that ``-dehack1'' also tries to fix SFX- and Sprite-
+  names. The way they're handled in DeHackEd is very unportable, and even DeHackEd
+  itself disables some of this stuff if the binaries don't match. If you want to
+  risk it (no crashes should occur because I do rangechecks) you can use -dehack1,
+  but I wouldn't recommend it, use -dehack instead.
+  It's highly likely that DeHackEd will report ``unmatchable text string'' errors on
+  startup. This is not a serious error, it's just that some text in LinuxDoom has
+  changed compared to DOS Doom so DeHackEd can't find some of that stuff. The same
+  goes for all other DeHackEd warnings, just ignore them.
+  If you don't want inbuilt DeHackEd support you should comment out the line
+  #define INBUILT_DEHACKED in h.d_main. That'll safe you about 20kB in the
+  executable.
+  As a first step with DeHackEd I recommend the DMARMY3 patch which changes all
+  monsters into player sprites and rather high-end weaponry. Care for a chaingun
+  in E1M1? Then prepare to face the Deathmatch Army...
+
+
+- SFX
+  ---
+
+  1) Thanks to a hint by Tom Olsson I had a look at the sound cacheing and noticed
+     a rather gigantic memory hog. All SFX were pre-cached, i.e. they used up
+     memory no matter whether they were used or not. Not that bad with the original
+     WAD(s), but try with something like the Simpsons WADs which come with around
+     3MB of sound samples and you're screwed. Pre-cacheing does make sense if the
+     WAD is on a remote server and you've got a slow net link and in theory on a
+     machine with very little memory it could also happen that the sample is swapped
+     out while it's still played (never happened to me, though. The result would be
+     garbled ``sound'', but nothing like crashes), so I didn't just throw out the
+     pre-cacheing code but used preprocessor directives. By default pre-cacheing is
+     disabled. If you want to enable it again you have to comment out the line that
+     says ``#define DONT_PRECACHE'' in h.i_sound. Users of 4MB machines don't have
+     a choice because Doom won't start up with precacheing enabled. Disabling pre-
+     cacheing makes the game start up with as little as 1MB in the Z_Zone! I wouldn't
+     wanna know how this performs when all hell breaks lose, though.
+
+  2) Synthesis: again thanks to a hint by Tom I rearranged some data and re-wrote
+     the synthesis code which should now be quite a bit more efficient. Also the
+     true reason for silent sound in the original release was found and remedied;
+     sound is now really really loud. The compressor code that was introduced in
+     the first minor update is still there but I wouldn't recommend using it any
+     more. It's disabled by default, anyway.
+
+
+- MISC:
+  -----
+
+  1) All 320*200 screens and messages centered in higher resolutions.
+  2) !SetMode utility sets up the screen mode in a consistent way on both old
+     machines and RiscPCs. See the !Run file for documentation on how to use it.
+  3) FuzzColumn and TranslatedColumn rewritten in assembler, DrawPatch got faster.
+  4) Optional environment variable DOOMRESERVE specifies the amount of memory to
+     reserve before the Z_Zone tries to grab its chunk. This ensures that mallocs
+     issued afterwards can get at least this much memory. By playing around with
+     this value you can cure the ``Couldn't realloc lumpinfo'' bug (when you get
+     it increase the value of DOOMRESERVE). 96k recommended.
+  5) New environment variable DoomGames$Path allows you to specify alternative
+     directories for saving games in. Very handy if you're playing different WADs
+     at the same time (Ultimate Doom, Doom II, StarWars Doom, Aliens TC, Simpsons,
+     Eternal III, ...). If it's not defined Doom:Games is used as before.
+
+
+
+
+
+				*****************
+				*** BUG FIXES ***
+				*****************
+
+
+- Bugs in two assembler functions fixed. Now all WADs should be recognized OK and the
+  crap output when initializing sound is gone.
+
+- Plutonia / TNT WADs should also be detected OK now.
+
+- Fixed ``... is turbo'' bug. This message should only appear if a player actually
+  _is_ turbo.
+
+
+
+
+			************************
+			*** 16bit SOUND & CO ***
+			************************
+
+
+Tom Olsson sent me his sources that give Doom 16bit sound, including surround code.
+Since I can't test this stuff I just include the sources as I got them for you to
+play around with yourselves. You'll need objASM for the assembler stuff (the macro
+used there is, according to Tom
+
+	MACRO
+	FUNC $var
+	EXPORT $var
+	DCB "$var",0
+	ALIGN 4
+	DCD &FF000000+(:LEN:"$var"+4):AND::NOT:3
+$var
+	MEND
+
+Hopefully some of you can use this stuff. The sources are in the directory NewSound.
+
+
+
+
+
+
+			*****************************
+			*** HINTS FOR 4MB SYSTEMS ***
+			*****************************
+
+
+You _HAVE TO_ disable sound precacheing (off by defauly anyway) or Doom won't start
+up to begin with. Next, although it'll start up with as little as 1MB in the Z_Zone
+you really should give Doom as much memory as humanly possible, i.e. either reset
+your machine to the supervisor prompt or re-boot it without executing the desktop
+boot file. That should allow Doom a Z_Zone chunk in the 2 - 2.5MB area which should
+be OK most of the time, especially if you have a fast harddisc (e.g. SCSI-II).
+
+Further recommendations:
+
+- Compile for static resolutions. Old machines are too slow for anything higher
+  than 320*200 anyway.
+- Disable DeHackEd support; might make a difference, but not much, so this is not
+  vital.
+- If you don't plan to use net support disable that too. Like DeHackEd this will
+  safe another bit of memory.
+
+
+
+
+				**************
+				*** THANKS ***
+				**************
+
+
+- Thomas Olsson (tolsson@pip.dknet.dk) for net support, hints on sound issues and
+  for letting me include his sound sources in this update.
+- Peter Burwood (pjb@arcangel.dircon.co.uk), who's cooperating with Tom; some of that
+  stuff is also by him, I think.
+- Darren Salt (arcsalt@spuddy.mew.co.uk) for reporting the assembler bugs.
+- Stefan Bellon (erm... don't have his email address handy ATM, sorry...) for some
+  tests.
+
+
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 6 Apr 98.
+
+
+
+Contact:
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de

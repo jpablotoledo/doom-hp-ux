@@ -1,0 +1,84 @@
+DOOM IT YOURSELF 4.2
+====================
+
+
+
+
+For general information on how to update see the previous UpdateM*-files.
+
+
+
+News 4.2:
+---------
+
+- On RiscPCs, DIY will now put the Z_Zone into a dynamic area by default. The main
+  reason for that is that the UnixLib version would only ever claim at most 11MB
+  for the Z_Zone which is a little small for some modern WADs, and resampling
+  engines linked against the SCL will freeze the machine. The dynamic areas
+  can be disabled on run-time by using the switch -nodynarea.
+  Word of caution: apparently atexit() doesn't work on UnixLib (at least older
+  versions). That means pressing escape before the title screen comes up will
+  leave the Dynamic Area intact (you can compare this with the UnixLib behaviour
+  where it works correctly). So this is a bug in UnixLib, not DIY.
+
+- Fixed bug where some Boom extras didn't work (e.g. switch in room NW of start
+  room in FizzB1). The reason was that Darren's approach of encoding the
+  transparency in the top bit of the sprite number in the states was incompatible
+  with this for some reason (couldn't find out why exactly, only that it screwed
+  up some Boom extensions).
+
+- Don't abort if frame rotations are missing but simply copy the nearest existing
+  frame rotations. This fixes the Goldeneye TC WAD.
+
+- Fixed mancubus bug causing rare crashes when loading savegames (only happened
+  to me once with the Punisher WAD, never before).
+
+- Added minimum light level for true colour modes to defaults (m_misc) as
+  ``minlightlevel''. Default is 32, maximum value is 256 (= idbeholdl). Maybe
+  it's just my monitor but the default of 32 is _darn_ dark at times.
+
+- Portable savegames! The old ones can still be loaded, but by default portable
+  ones are written. These are portable in the sense that they can be loaded with
+  any 4.2 engine, irrespective of FULL_NEW_FEATURES and DIYBOOM, but it also
+  means they are cross-platform, so you can use the same games on RISC OS, Linux,
+  Solaris, ... . These new savegames also make sure (like Boom) that monsters
+  aren't asleep after you loaded a game.
+  If for some strange reason you feel the urge to use old savegames
+  only, set old_savegames to 1 in doomrc, but I think I debugged the new savegames
+  far enough to say they're safe. If you find any problems with them, please let
+  me know (and maybe send me the broken one, if it belongs to a publicly available
+  WAD or one sold by iD.
+
+
+
+
+
+Andreas Dehmel, 28-Sep-2000
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+	When the wind cries out my name
+	and time has come for me to die
+	Then wrap me in my cape
+	and lay my sword down by my side
+
+	Then place me on a ship of oak
+	and let it drift with tide
+	Let the flames purify my soul
+	on its way to hall up high.
+
+		(Bathory - Shores in Flames)

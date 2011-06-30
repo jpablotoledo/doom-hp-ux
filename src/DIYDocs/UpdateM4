@@ -1,0 +1,216 @@
+DOOM IT YOURSELF 4b
+===================
+
+
+
+
+For general information on how to update see the previous UpdateM*-files.
+
+
+
+News 4b:
+--------
+
+- Fixed bug that sometimes caused Boom crashes after loading a new level.
+- Engine recognizes shared lumps (created by e.g. wadptr) and only loads
+  one version of a lump into memory. Noticably better performance for some
+  Wolfenstein levels.
+- lumpinfo is down to 20 bytes per entry again (in case you noticed an
+  increase in ``couldn't realloc lumpinfo'' errors).
+- Fixed bug that caused engine hangups / broken demos in fast mode.
+- Print postmortem stack backtrace if the engine crashes; this works only
+  with the Shared C Library, though. Should the engine ever crash on you,
+  send me a copy of the log-file in Doom:log (provided the engine didn't
+  crash so bad that the entire machine locked up).
+- Some more small things I found whilst trying to make the Boom engine
+  fully demo-compatible. Sadly it still isn't and I haven't got a clue
+  why.
+
+
+	10-Oct-99
+
+
+
+
+News:
+-----
+
+- Now optional BOOM level compatibility! Define DIYBOOM during compilation
+  to create an engine that can play Boom levels. By default there are 4
+  new targets for creating Boom engines, ``boom'' (8bpp), ``boomh'' (16bpp),
+  ``boomt'' (32bpp) and ``boomrt'' (32bpp, resampling). Transparency is
+  always enabled for 16/32bpp versions. However there is currently no
+  transparency in 8bpp modes, neither support for arbitrary transparency
+  levels (which would be very inefficient in anything but 8bpp). Lots of
+  source code taken from the Boom source 2.02 with kind permission by
+  TeamTNT. Thanks to Darren Salt for lending a hand in merging the relevant
+  bits of Boom with DIY.
+  Warning: I only implemented _level_ compatibility. Boom demos will not
+  work -- that would require more changes which I currently don't see a
+  reason for. There's a new switch for the Boom engine, ``-compatibility''
+  which makes the engine to some extent backwards-compatible with normal
+  DIY. Note however that savegames are _not_ compatible. I just fixed a bug
+  that was disturbing playback of one particular demo (while several others
+  were working OK all along), so I hope I fixed all demo compatibility
+  problems now; if you find a demo that works with the normal DIY engine
+  but fails at some point with a Boom-enabled binary, please drop me a note
+  and the URL where I can download the demo. One thing I'll tackle in the
+  next release is arbitrary column heights which are possible in Boom (no
+  time ATM).
+  Note to Unix users: I haven't updated the Makefile as completely as the
+  RISC OS one. To build a Boom engine you have to append ``BOOMFLAGS=-DDIYBOOM''
+  to the call to make (e.g. ``make sun32rt BOOMFLAGS=-DDIYBOOM''). Also the
+  dependencies are not quite up to date.
+- During work on Boom compatibility I also incorporated the Medusa and
+  firelines fixes into DIY.
+- The assembler-plotters got a little more efficient. The results aren't
+  dramatic, though, and it's very unlikely that you'll notice anything at
+  all on a SA RPC.
+- The demo name passed to ``-playdemo'' or ``-timedemo'' is no longer a
+  lump name but a pattern. All lump names matching the pattern will be
+  played back as demos one after another in the order they're found in
+  the WAD(s). Legal wildcards:
+  *	matches any string
+  ?	matches any character
+  #	matches a decimal digit
+  So if you want to playback all Hell Revealed demos in one gigantic demo
+  session you could use something like ``-playdemo hr##-uv''. Alternatives
+  are ``hr??-uv'' or ``hr*-uv''.
+  You have to be careful that only demo-lumps are used, therefore you should
+  restrict the patterns as much as possible. So prefer '#' over '?' and
+  '?' over '*' where possible. In the above example, using ``hr*'' as
+  pattern is asking for trouble.
+- Also fixed paths for -timedemo.
+- Removed vissprite limit (wasn't even aware it was still there).
+- Removed limits of special lineanims and intercepts.
+- Limits can now be set dynamically via the doomrc file. This is sensible
+  because there are WADs that increment the number of vissprites to more
+  than 600 or the number of visplanes to 256 or more. For each dynamic
+  array you can specify the default size and the maximum size by editing
+  doomrc. A maximum size of 0 means ``no limit''. If you have lots of memory
+  at your disposal you might as well increment the default values and remove
+  all limits. On an 8MB machine I'd _really_ discourage going any higher!
+- Sprite drawing got quite a bit more efficient, but you'll only really
+  notice this in pretty complex scenes like the entry hall in Rheingold.
+- Third automap cheat mode with additional colour information for all things,
+  courtesy of Darren Salt.
+- Cleaned out the entire interface, used const and static wherever possible.
+
+Bugfixes:
+---------
+
+- Fixed long-standing dehacked bug with code pointers. Manifested itself
+  only with Doom2 Xtreme Gold, for all I know.
+
+
+
+
+Machine-specific tuning:
+------------------------
+
+NOTE: the -fps switch is not a reliable indicator of speed as it doesn't
+take into account how many game tics are run per frame. If you want to
+check the game's speed you'll have to use the -timedemo switch (and a
+suitable demo).
+
+- short --> int: a lot of shorts were used throughout the source which are
+  a bit awkward to handle on RISC processors. On the other hand they save
+  memory and are thus better for the cache. You can specify whether you
+  want to use short or int via the definition of dshort_t in h.doomtype
+  By default this is set to int; change to short by changing the ``#if 1''
+  to ``if 0''.
+  Rule of thumb: anything but a SA RPC: go to int. SA RPC: better stick to
+  shorts as those don't clobber the cache as much as ints would.
+- Inlining: the functions P_BlockLinesIterator(), P_BlockThingsIterator(),
+  R_PointOnSide() and R_PointInSubsector() can be inlined by compiling
+  with DIYINLINE defined (this is the default). Whether this is a good
+  thing is again mostly down to cache, so on a SA RPC you're probably
+  better off without it.
+
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 30-Sep-99.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+
+	Deep green dark chaos,
+	blinded I run down these paths.
+	By heart I know them,
+	they lead to the searing cliffs;
+	stout they stand above the water's edge,
+	lifeless
+
+	And this is my foundation,
+	cold stone,
+	formed by winds and time;
+	how invulnerable,
+	lifeless
+
+	Ahh...
+	I have longed to be at one with this;
+	yet, the waters call my name
+
+	For once I wish to see
+	the entity behind the voice,
+	the face of this seduction,
+	the beauty of my pain
+
+	Am I blessed or am I cursed by thy presence...
+	what is my crime...
+	what is my deed...
+	Is this life my redemption,
+	shall I repent or proceed?
+
+	I hate my flesh,
+	its dimension poisoned my soul with doubt;
+	it made me question the essence of...
+	the ``I''
+
+	Slaves are those of this world
+	given freedom to lay chains upon The Master.
+	The wolf is no longer free,
+	release the chains and come for me
+
+		(Emperor -- With strength I burn)

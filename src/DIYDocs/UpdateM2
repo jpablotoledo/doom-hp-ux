@@ -1,0 +1,209 @@
+WELCOME TO THE SECOND MAJOR UPDATE FOR DOOM IT YOURSELF
+=======================================================
+
+
+
+
+Don't forget to delete the directories NewDiffs and NewFull the first major
+update created in your DoomItYs directory before you merge this major update
+with your DoomItYs directory (if you updated; this second major update is not
+based on the first one but replaces it, as discussed in the file UpdateM1).
+Make sure you read UpdateM1 first because this file only contains the news
+since major update #1.
+
+
+
+
+
+************
+*** NEWS ***
+************
+
+
+- 16 AND 32 bpp VERSIONS:
+  =======================
+
+  I started with 16bpp because I can use that on my A5000 (thanks to the Colour
+  Card). The modifications necessary to make 16bpp run could all be used for 32bpp
+  (except for the assembler bits), so 32bpp was almost ``free''...
+  The base type for frame buffers is no longer byte but pixel_t. You have to
+  select the colour depth you wish to compile DIY for in h.doomdef by setting
+  the value of LD_PIXEL_DEPTH to 3 (8bpp), 4 (16bpp) or 5 (32bpp). Additionally
+  you have to specify the correct target when making the whole thing: !RunImage
+  for 8bpp, !RunImageH (high colour) for 16bpp and !RunImageT (true colour) for
+  32bpp. You shouldn't be able to link the wrong target, but better not try it.
+  So, to build 16bpp Doom set LD_PIXEL_DEPTH to 4 and type ``make -r !RunImageH''.
+  Basically I could have made the whole thing only depend upon the target but
+  that'd make it much too easy to mix object files compiled for different colour
+  depths with catastrophic consequences.
+
+  Lighting: of course, since all data in the WADs is 8bpp higher colour depths
+  can only make a difference as far as lighting is concerned. The array
+  lightmultipliers in c.i_video contains a 16.16 fixpoint number for each of the
+  32 lighting-colormaps, giving the brightness this colourmap should have compared
+  to the brightest one. There are two principal ways to handle this: either you
+  analyse the actual 8bpp colourmaps to get the average brightness level of each
+  colourmap, or you use a simple, linearily decreasing model. In the latter case
+  you have to fiddle with the minimum level a lot to get a good result. Determining
+  the average relative brightness of the darkest 8bpp colourmap and linearily
+  interpolating in between is absolutely no good. After trying both ways I decided
+  that a linearily decreasing approach with a minimum relative brightness of 0x2000
+  (= 0.125) looks best. How lighting is handled is determined by the variable
+  LINEAR_COLOURMAP_LIGHT in c.i_video . If it is defined it has to be set to the
+  relative brightness of the darkest colourmap (fixpoint number!). Decrease the value
+  to make dark things darker and increase the value to make dark things lighter.
+  Comment out the definition to use the first alternative of calculating the average
+  relative brightness of each 8bpp colourmap. BTW, I can only speak for 16bpp in that
+  respect, maybe you have to tweak the values a little for 32bpp.
+
+  Another thing that's different in 16 and 32bpp modes is that Fuzz is now actually
+  a real shadow rather than the cheap imitation Fuzz was in 8bpp. Oh yeah, and the
+  number of lightlevels has been upped from 16 to 32.
+
+  The difference between 8bpp and 16bpp is pretty small most of the time in the
+  original Doom. Doom2, OTOH, is an entirely new game that way.
+  As far as speed goes 16bpp can at times (simple scenes) be faster even than 8bpp,
+  because I rewrote it to plot 2 columns in parallel whenever possible (within
+  reasonable scope). It will definitely be slower when there are lots of masked
+  textures or lots of jagged edges. Also it appears in 16bpp you can get missing
+  columns in very complex scenes, probably a side-effect of double-column plotting.
+  ATM I have no idea how that's possible but maybe I'll get to the bottom of it
+  eventually (not that I'm planning to look too hard, though). 32bpp should be
+  almost as fast as 8bpp on non-SA RiscPCs but is probably considerably slower on
+  SA ones due to its measly bus bandwidth.
+
+  !SetMode was updated to handle different colour depths. There are two new switches,
+  -high (16bpp) and -true (32bpp). On RiscPCs these switches also set up the correct
+  screen mode whereas on old machines you still have to use the mode number for that,
+  of course. On any machine the variable Doom$Executable will contain the name of
+  the correct executable for that colour depth after !SetMode has finished.
+  NOTE for ColourCard users: CCModeDes seems to have tremendous trouble setting up
+  the VDU information for modes; wrong number of palette entries is a known problem,
+  but I found out it also codes the _depth_ wrong!!! So after you built a 16bpp mode
+  you have to set the variable log2bpp (number 9) to 4 (look for the sequence
+  &00000009 &00000003 around offset &110 and replace the 3 with 4).
+
+
+- MISC:
+  =====
+
+  1) I rearranged some stuff in c.r_segs which should make it faster especially in
+     complex scenes by avoiding the division whenever possible. I also tried floating
+     point division on my A5000/FPA but it didn't make any noticable difference in
+     speed -- just in case you're wondering what the ``USE_FLOATING_POINT'' in c.r_segs
+     is all about...
+
+  2) Don't abort when lumps aren't found but replace them with a default lump (0).
+     This is kind of crude but it's necessary in some Eternal III levels, for instance.
+
+  3) f_wipe now uses frame buffers whenever possible instead of statically allocated
+     screens[2] and screens[3]. That saves you the memory for 2 screens if you're
+     running with 3 framebuffers and for 1 screen if you're running with 2 framebuffers.
+     Should be handy especially in high colour depths or resolutions.
+
+  4) Games can now always be saved, no matter what size they are, I completely
+     rearranged that part of the code (actually it was a necessity after (3) ).
+     I tested it with some really big savegames (StarWars, each around 190k) and
+     they all worked fine so I'd say I didn't mess up in the process.
+
+  5) Break key (un)pauses the game.
+
+  6) Print key saves the currently displayed screen as a sprite to the directory
+     Doom:Snapshots . So make sure you created this directory if you want to make
+     snapshots of the game. Sprites are saved under the name sprite## where ## is
+     a two-digit decimal number. Thus a maximum of 100 snapshots is possible. After
+     that... well, just weed out the old ones, OK?
+
+
+
+
+
+
+
+****************
+*** Bugfixes ***
+****************
+
+- Fixed Doom 2 startup message (bug was introduced when I changed the whole text
+  handling for DeHackEd).
+
+- Fixed idclev bug in Doom 2 and made sure no key creates more than 1 event
+  (this was basically only a problem when using cheats, especially with idclev).
+
+- Fixed R_PrecacheLevel. Now it doesn't cache if the Z_Zone's too small anyway.
+  That means that if your Z_Zone is too small for the level it will start up a lot
+  faster than before but you'll probably have lots of disc activity towards the
+  beginning. But that's still better than trying to cache a 10MB level in a 4MB
+  Z_Zone chunk which only results in swapping most of the cached stuff right out
+  again.
+  I also introduced rangechecks to avoid bugs in WADs completely bombing out your
+  machine. This proved absolutely vital when I played around with Eternal III
+  (which, BTW is also a good argument _against_ pre-cacheing with some levels in
+  the 10MB area). Try any Eternal III level but the first one without the range-
+  checks (i.e. DIY versions before this update) and the only thing that can help
+  you is the reset key. Very nasty bug indeed (luckily not mine ;-) ).
+
+- Fixed bug that made Doom crash in F_BunnyScroll (end of E3E8, after you
+  killed the Spider Mastermind) in higher resolution modes. Sorry, I don't
+  normally _play_ in higher resolutions 'cause my machine is really old, so I
+  didn't notice before.
+
+- Fixed position of ``New game'' string.
+
+- The ENOENT-undefined symbol error when compiling c.dehacked shouldn't appear
+  with any version of the SharedCLib anymore.
+
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 22 Apr 98.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+	I am the beast in passionate pain
+	I am the grim being of the highlands
+	Of the other side...
+	I am winter when you freeze
+	I am the hammer and you are the anvil
+
+		(Satyricon - Immortality Passion)
