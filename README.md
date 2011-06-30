@@ -11,7 +11,7 @@ Port de **Doom It Yourself (DIY) v4.4.2** compilado y ejecutándose en una HP Vi
 | Sistema operativo | HP-UX B.11.00 |
 | Compilador | HP C Compiler A.11.01.00 |
 | Video | X11 con extensión MIT-SHM |
-| Audio | Sin sonido (`-DDOOM_NO_SFX`) |
+| Audio | HP Alib / simpleAudio — 16-bit linear stereo via `Aserver` |
 
 ## Fuente base
 
@@ -29,6 +29,12 @@ Las rutas originales apuntaban a `/usr/local/DIR/X11/R6.1/` (inexistente). Corre
 
 **`src/d_main.c` - Config file junto al ejecutable**
 Si `DOOMWADDIR` está definido, el archivo de configuración se guarda como `doom.cfg` dentro de ese mismo directorio, en lugar de `$HOME/.doomrc`.
+
+**`src/i_sound.c` + `src/simpleAudio.h` - Sonido via HP Alib**
+Implementación de audio para HP-UX usando la API `simpleAudio` de HP (wrapper sobre Alib).
+`openAStream()` devuelve un socket fd al que se escribe PCM 16-bit stereo directamente,
+igual que `/dev/dsp` en Linux. `simpleAudio.c` se copia desde `/opt/audio/src/simpleAudio/`
+durante el build (no se distribuye en el repo por pertenecer a HP).
 
 Detalles completos en [docs/source-changes.md](docs/source-changes.md).
 

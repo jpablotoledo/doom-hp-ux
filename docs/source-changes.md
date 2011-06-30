@@ -135,19 +135,95 @@ Si no, el comportamiento original (`$HOME/.doomrc`) se mantiene sin cambios.
 
 ---
 
+### Cambio 4: Soporte de sonido para HP-UX via HP Alib / simpleAudio
+
+**Archivos modificados:** `src/i_sound.c`, `src/Makefile`  
+**Archivo agregado:** `src/simpleAudio.h`  
+**Archivo copiado en build:** `src/simpleAudio.c` (desde `/opt/audio/src/simpleAudio/` en HP-UX)
+
+**Contexto:**  
+El port HP-UX original compilaba con `-DDOOM_NO_SFX` (sonido deshabilitado).
+HP-UX 11.00 tiene el servidor de audio `Aserver` (parte de HP Alib) corriendo
+en el B2000, y provee la API `simpleAudio` que devuelve un socket fd al que se
+escriben samples PCM directamente — igual que `/dev/dsp` en Linux.
+
+**Infraestructura de audio en el B2000:**
+
+| Componente        | Ubicación                                |
+|-------------------|------------------------------------------|
+| Servidor de audio | `/opt/audio/bin/Aserver` (PID ~1719)     |
+| Librería Alib     | `/opt/audio/lib/libAlib.sl`              |
+| Librería At       | `/opt/audio/lib/libAt.sl`                |
+| Headers           | `/opt/audio/include/Alib.h`, `Audio.h`  |
+| API simplificada  | `/opt/audio/src/simpleAudio/`            |
+| Dispositivos      | `/dev/audio`, `/dev/audioBA`, etc.       |
+
+**Cambio en `src/i_sound.c`:**
+
+1. Include de `simpleAudio.h` para HP-UX:
+```diff
++#ifdef __hpux
++#include "simpleAudio.h"
++#endif
+```
+
+2. Inicialización del stream de audio (en `I_InitSound`):
+```diff
+ #ifdef __sun
+     /* Solaris: open /dev/audio con libaudio ... */
++#elif defined(__hpux)
++    if (openAudio() != 0) { ... return; }
++    audio_fd = openAStream(PLAY_STREAM, UseFrequency, USE_STEREO,
++                           USE_LIN16, USE_DEFAULT_SPEAKER, START_IMMEDIATELY);
++    if (audio_fd < 0) { closeAudio(); return; }
+ #else
+     /* Linux: open /dev/dsp con ioctls */
+```
+
+3. Sincronización de escritura — HP-UX usa el mismo método timer que Solaris:
+```diff
+-#ifdef __sun
++#if defined(__sun) || defined(__hpux)
+     /* Synchronize via the timer */
+```
+
+4. Cierre del stream (en `I_ShutdownSound`):
+```diff
+ #ifdef __riscos__
+     RemoveDoomSound();
++#elif defined(__hpux)
++    closeAStream(audio_fd);
++    closeAudio();
+ #else
+     close(audio_fd);
+```
+
+**Cambio en `src/Makefile` HPFLAGS:**
+```diff
+-COMPFLAGS='... -DDOOM_NO_SFX -I/usr/include ...'
+-LDFLAGS='... -lX11 -lXext -lICE -lXmu'
++COMPFLAGS='... -I/usr/include -I/opt/audio/include ...'
++LDFLAGS='... -lX11 -lXext -lICE -lXmu -lAlib -lAt'
+```
+
+`simpleAudio.o` se agrega a la lista de objetos. `simpleAudio.c` no se
+distribuye en el repositorio (pertenece a HP); `doom_build.sh` lo copia
+automáticamente desde `/opt/audio/src/simpleAudio/` durante el build.
+
+---
+
 ## Resultado final
 
 ```
 Directorio: /opt/doom-hpux/
-├── doom-hpux     663.552 bytes  ← binario compilado (era hpdiy8)
-├── doom.wad   28.795.076 bytes  ← Freedoom Phase 1 v0.13.0
-├── doom.cfg            0 bytes  ← config (Doom lo rellena al cerrar)
-└── doom.sh           144 bytes  ← script de lanzamiento
+├── doom-hpux     ~680 KB  ← binario compilado con sonido
+├── doom.wad       28 MB   ← Freedoom Phase 1 v0.13.0
+├── doom.cfg        0 B    ← config (Doom lo rellena al cerrar)
+└── doom.sh       ~144 B   ← script de lanzamiento
 
 Plataforma: HP-UX B.11.00 / PA-RISC 9000/785
 Comando:    /opt/doom-hpux/doom.sh
-Estado:     CORRIENDO - E1M1-E4M9, MIT-SHM X11
-Sonido:     Sin sonido (-DDOOM_NO_SFX)
+Audio:      HP Alib / simpleAudio — 16-bit linear stereo via Aserver
 ```
 
 ---

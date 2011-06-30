@@ -4,7 +4,7 @@
 # Uso: at -f doom_build.sh now
 trap "" 1 2 15
 
-SCRIPT_DIR=`dirname $0`
+SCRIPT_DIR=`cd \`dirname $0\` && pwd`
 SRC="$SCRIPT_DIR/src"
 DISTDIR=/opt/doom-hpux
 LOG=/tmp/doom_build.log
@@ -34,6 +34,19 @@ if [ -z "$WAD_SOURCE" ]; then
 fi
 
 echo "WAD encontrado: $WAD_SOURCE" >> "$LOG"
+
+# Copiar simpleAudio.c desde la instalacion de HP-UX (no se distribuye con el repo)
+if [ ! -f "$SRC/simpleAudio.c" ]; then
+    if [ -f /opt/audio/src/simpleAudio/simpleAudio.c ]; then
+        cp /opt/audio/src/simpleAudio/simpleAudio.c "$SRC/simpleAudio.c"
+        echo "simpleAudio.c copiado desde /opt/audio/src/simpleAudio/" >> "$LOG"
+    else
+        echo "ERROR: No se encontro /opt/audio/src/simpleAudio/simpleAudio.c" >> "$LOG"
+        echo "Instale el paquete de audio de HP-UX (AudioDevKit o similar)" >> "$LOG"
+        echo 1 > /tmp/doom_build.exit
+        exit 1
+    fi
+fi
 
 # Compilar
 cd "$SRC"

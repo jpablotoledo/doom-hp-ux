@@ -63,6 +63,10 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <multimedia/libaudio.h>
 #endif
 
+#ifdef __hpux
+#include "simpleAudio.h"
+#endif
+
 /* Timer stuff. Experimental.*/
 #include <time.h>
 #include <signal.h>
@@ -1048,6 +1052,9 @@ void I_ShutdownSound(void)
 
 #ifdef __riscos__
   RemoveDoomSound();
+#elif defined(__hpux)
+  closeAStream(audio_fd);
+  closeAudio();
 #else
   /* Cleaning up -releasing the DSP device.*/
   close ( audio_fd );
@@ -1206,6 +1213,21 @@ I_InitSound(void)
       head.endian = AUDIO_ENDIAN_BIG;
       audio_set_play_config(audio_fd, &head);
     }
+#elif defined(__hpux)
+    if (openAudio() != 0)
+    {
+      fprintf(logfile, "Could not connect to HP audio server\n");
+      return;
+    }
+    audio_fd = openAStream(PLAY_STREAM, UseFrequency, USE_STEREO,
+                           USE_LIN16, USE_DEFAULT_SPEAKER, START_IMMEDIATELY);
+    if (audio_fd < 0)
+    {
+      fprintf(logfile, "Could not open HP-UX audio stream\n");
+      closeAudio();
+      return;
+    }
+    fprintf(logfile, "using HP Alib 16bit linear stereo; ");
 #else
     audio_fd = open("/dev/dsp", O_WRONLY);
     if (audio_fd<0)
@@ -1564,8 +1586,8 @@ static void I_HandleSoundTimer( int ignore )
   /* Write it to DSP device.*/
 #ifndef __riscos__
     int 			blocks = 0;
-#ifdef __sun
-    /* Synchronize via the timer; somewhat crude, but works OK on Solaris*/
+#if defined(__sun) || defined(__hpux)
+    /* Synchronize via the timer; somewhat crude, but works OK on Solaris/HP-UX*/
     struct timeval	tp;
     struct timezone	tzp;
     int			need_samples;

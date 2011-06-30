@@ -27,8 +27,8 @@ SUNFLAGS = COMPFLAGS='$(SUNOPT) -D__BIG_ENDIAN__ -DDIYNOSHORT -I/usr/demo/SOUND/
 	LDFLAGS='-L/usr/local/DIR/X11/R6/lib -lX11 -lXext -lICE -lXmu' \
 	LIBS='$(BASELIBS) -lXext -lICE -lsocket -lnsl -L/usr/demo/SOUND/lib -laudio -lm'
 
-HPFLAGS = COMPFLAGS='-O +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -DDOOM_NO_SFX -I/usr/include $(DBGFLAG) $$(SPECIALFLAGS)' \
-	LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -lX11 -lXext -lICE -lXmu' \
+HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG) $$(SPECIALFLAGS)' \
+	LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -L/opt/audio/lib -lX11 -lXext -lICE -lXmu -lAlib -lAt' \
 	LIBS='$(BASELIBS) -lm'
 
 LINUXFLAGS = CC=gcc COMPFLAGS='-O3 -fwritable-strings $(LINBASEFLAGS) $(DBGFLAG) $$(SPECIALFLAGS)' \
@@ -133,7 +133,8 @@ OBJS=	$(OBJPATH)doomdef.o \
 	$(OBJPATH)sounds.o \
 	$(OBJPATH)dehacked.o \
 	$(OBJPATH)i_net.o \
-	$(OBJPATH)i_sound.o
+	$(OBJPATH)i_sound.o \
+	$(OBJPATH)simpleAudio.o
 
 
 
@@ -342,8 +343,11 @@ $(OBJPATH)i_net.o:	i_net.c \
 	$(CC) $(CFLAGS) $(NETINC) -c -o $(OBJPATH)i_net.o i_net.c
 
 $(OBJPATH)i_sound.o:	i_sound.c \
-	 d_event.h d_items.h d_net.h d_player.h d_think.h d_ticcmd.h doomdata.h doomdef.h doomstat.h doomtype.h i_sound.h i_system.h info.h m_argv.h m_fixed.h m_misc.h p_mobj.h p_pspr.h sounds.h tables.h w_wad.h z_zone.h 
+	 d_event.h d_items.h d_net.h d_player.h d_think.h d_ticcmd.h doomdata.h doomdef.h doomstat.h doomtype.h i_sound.h i_system.h info.h m_argv.h m_fixed.h m_misc.h p_mobj.h p_pspr.h sounds.h tables.h w_wad.h z_zone.h
 	$(CC) $(CFLAGS) -c -o $(OBJPATH)i_sound.o i_sound.c
+
+$(OBJPATH)simpleAudio.o:	simpleAudio.c simpleAudio.h
+	$(CC) $(CFLAGS) -I/opt/audio/include -c -o $(OBJPATH)simpleAudio.o simpleAudio.c
 
 $(OBJPATH)i_system.o:	i_system.c \
 	 d_event.h d_items.h d_net.h d_player.h d_think.h d_ticcmd.h doomdata.h doomdef.h doomstat.h doomtype.h g_game.h i_sound.h i_system.h i_video.h i_net.h info.h m_fixed.h m_misc.h p_mobj.h p_pspr.h sounds.h tables.h 
