@@ -1,0 +1,44 @@
+CC	= gcc
+SCLFLAGS = -mlibscl
+CFLAGS	= -O3 -Wall -pedantic -ansi -mpoke-function-name $(SCLFLAGS)
+DECFLAGS = $(CFLAGS) -DDECOMPRESS_ASM
+AS	= as
+ASFLAGS	= -gcc
+MAKELIB = makealf
+MAKELIBFLAGS = -o
+
+
+OBJS	= o.fastlzc o.fastlzd o.fastlzintl o.asm_fastlz
+
+
+all:	o.libfastlz test_flz
+
+
+
+o.libfastlz:	$(OBJS)
+	$(MAKELIB) $(MAKELIBFLAGS) o.libfastlz $(OBJS)
+
+
+test_flz:	o.test_flz o.libfastlz
+	$(CC) $(SCLFLAGS) -o test_flz o.test_flz o.libfastlz
+	
+
+clean:
+	-wipe o.* ~C~VF
+
+
+	
+o.fastlzc:	c.fastlzc h.fastlz h.fastlzintl
+	$(CC) -c $(CFLAGS) c.fastlzc
+
+o.fastlzd:	c.fastlzd h.fastlz h.fastlzintl
+	$(CC) -c $(DECFLAGS) c.fastlzd
+
+o.fastlzintl:	c.fastlzintl h.fastlzintl
+	$(CC) -c $(CFLAGS) c.fastlzintl
+
+o.asm_fastlz:	s.asm_fastlz
+	$(AS) $(ASFLAGS) -o o.asm_fastlz s.asm_fastlz
+
+o.test_flz:	c.test_flz h.fastlz
+	$(CC) -c $(CFLAGS) c.test_flz

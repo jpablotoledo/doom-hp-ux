@@ -1,0 +1,147 @@
+\co Macro package for creating the fixpoint files dependent on the
+\co target machine. There are two macros that influence the form of
+\co the plotters:
+\co M_LONGMULT: use the long multiplier (SA mostly)
+\co M_FPA: use the FPA for divisions
+\co
+\include "m/sharedass"
+\co
+;
+; ARM fixpoint code. Original (C)-code is kinda braindead.
+; (C) 2000 Andreas Dehmel.
+; Note: ONLY works on 16.16 fixpoint values. These are the default
+; so there shouldn't be a problem.
+;
+
+DefineRegisters
+
+
+
+
+;	IDFN	(C) 2000 by Andreas Dehmel
+
+DefineFunction(FixedMul)
+\if defined M_LONGMULT
+	DCD	0xe0c32190		; = smul r2, r3, r0, r1
+	mov	r2, r2, lsr #16
+	add	r0, r2, r3, lsl #16
+ReturnFromLR
+\else
+	mov	r2, r0, asr #16
+	bic	r0, r0, r2, lsl #16
+	mul	r2, r1, r2		; a.int * b
+	mov	r3, r1, asr #16
+	bic	r1, r1, r3, lsl #16
+	mla	r2, r3, r0, r2
+	mul	r0, r1, r0
+	add	r0, r2, r0, lsr #16
+ReturnFromLR
+\endif
+
+
+
+\if defined M_FPA
+\define FixDivCore = {
+	fltd	f0, r0
+	fltd	f1, r1
+	dvfd	f0, f0, f1
+	ldfd	f1, =65536.0
+	mufd	f0, f1, f0
+	fixz	r0, f0
+}
+\else
+\define FixDivShift(shift) = {
+	cmp	r0, r1, lsl #$shift$
+	bcc	|DivMark$shift$|
+}
+\define FixDivHigh(shift) = {
+	cmp	r0, r1, lsl #$shift$
+	subcs	r0, r0, r1, lsl #$shift$
+	orrcs	r2, r2, #(0x10000 << $shift$)
+|DivMark$shift$|
+}
+\define FixDivLow(shift) = {
+	mov	r0, r0, lsl #1
+	cmp	r0, r1
+	subcs	r0, r0, r1
+	orrcs	r2, r2, #(1 << $shift$)
+}
+\define FixDivCore = {
+	eor	r3, r0, r1
+	cmp	r0, #0
+	rsblt	r0, r0, #0
+	cmp	r1, #0
+	rsblt	r1, r1, #0
+	mov	r2, #0
+FixDivShift(0)
+FixDivShift(1)
+FixDivShift(2)
+FixDivShift(3)
+FixDivShift(4)
+FixDivShift(5)
+FixDivShift(6)
+FixDivShift(7)
+FixDivShift(8)
+FixDivShift(9)
+FixDivShift(10)
+FixDivShift(11)
+FixDivShift(12)
+FixDivShift(13)
+FixDivShift(14)
+	subcs	r0, r0, r1, lsl #15
+	orrcs	r2, r2, #(0x10000 << 15)
+FixDivHigh(14)
+FixDivHigh(13)
+FixDivHigh(12)
+FixDivHigh(11)
+FixDivHigh(10)
+FixDivHigh(9)
+FixDivHigh(8)
+FixDivHigh(7)
+FixDivHigh(6)
+FixDivHigh(5)
+FixDivHigh(4)
+FixDivHigh(3)
+FixDivHigh(2)
+FixDivHigh(1)
+FixDivHigh(0)
+FixDivLow(15)
+FixDivLow(14)
+FixDivLow(13)
+FixDivLow(12)
+FixDivLow(11)
+FixDivLow(10)
+FixDivLow(9)
+FixDivLow(8)
+FixDivLow(7)
+FixDivLow(6)
+FixDivLow(5)
+FixDivLow(4)
+FixDivLow(3)
+FixDivLow(2)
+FixDivLow(1)
+FixDivLow(0)
+	tst	r3, #0x80000000
+	rsbne	r2, r2, #0
+	mov	r0, r2
+}
+\endif
+
+
+
+DefineFunction(FixedDiv)
+	movs	r2, r0			; first to the range check (easier on positive data)
+	rsblt	r2, r2, #0
+	movs	r3, r1
+	rsblt	r3, r3, #0
+	cmp	r3, r2, lsr #14		; do the divide if b > (a>>14)
+	bhi	|DoFixDivide|
+	eors	r2, r0, r1
+	mvnge	r0, #0x80000000
+	movlt	r0, #0x80000000
+ReturnFromLR
+|DoFixDivide|
+FixDivCore
+ReturnFromLR
+
+	END

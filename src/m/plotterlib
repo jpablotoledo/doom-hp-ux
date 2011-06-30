@@ -1,0 +1,979 @@
+\co Assembler library for mpp.
+\co The macros defined here are used to automatically build the
+\co assembler sources for DIY. If you want to do any changes to
+\co the assembler plotters you'll have to edit the macro libraries
+\co in the m directory because changes to the assembler plotter files
+\co will be overwritten.
+\co
+\co Shared definitions
+\include "m/sharedass"
+\co
+\co Header commentary
+\co
+\define DefineHeader(bpp) = {
+;***
+;*** Assembler plotters for Doom It Yourself, $bpp$bpp.
+;*** Automatically created with mpp; do not modify, changes will be lost.
+;*** Licensed under GPL by Andreas Dehmel, 1999
+;***
+}
+\co
+\co Draw context (see r_draw.h)
+\co
+\define DefineStructs = {
+; draw_context_t struct (r_draw.h)
+dctx_viewwidth		EQU	0x00
+dctx_viewheight		EQU	0x04
+dctx_scrwidth		EQU	0x08
+dctx_scrheight		EQU	0x0c
+dctx_scaledwidth	EQU	0x10
+dctx_detailshift	EQU	0x14
+dctx_centerx		EQU	0x18
+dctx_centery		EQU	0x1c
+dctx_centerxfrac	EQU	0x20
+dctx_centeryfrac	EQU	0x24
+dctx_projection		EQU	0x28
+dctx_dc_colormap	EQU	0x2c
+dctx_dc_x		EQU	0x30
+dctx_dc_yl		EQU	0x34
+dctx_dc_yh		EQU	0x38
+dctx_dc_iscale		EQU	0x3c
+dctx_dc_texmid		EQU	0x40
+dctx_dc_texheight	EQU	0x44
+dctx_dc_source		EQU	0x48
+dctx_dc_translation	EQU	0x4c
+dctx_fuzztable		EQU	0x50
+dctx_fuzzpos		EQU	0x54
+dctx_fuzzoffset		EQU	0x58
+dctx_fuzz_cmap		EQU	0x5c
+dctx_resamp_col		EQU	0x60
+dctx_resamp_tfrac	EQU	0x64
+dctx_ds_colormap	EQU	0x68
+dctx_ds_y		EQU	0x6c
+dctx_ds_x1		EQU	0x70
+dctx_ds_x2		EQU	0x74
+dctx_ds_xfrac		EQU	0x78
+dctx_ds_yfrac		EQU	0x7c
+dctx_ds_xstep		EQU	0x80
+dctx_ds_ystep		EQU	0x84
+dctx_ds_source		EQU	0x88
+dctx_sprtopscreen	EQU	0x8c
+dctx_spryscale		EQU	0x90
+dctx_floorclip		EQU	0x94
+dctx_ceilingclip	EQU	0x98
+dctx_dc_dbl_yl		EQU	0x9c
+dctx_dc_dbl_yh		EQU	0xa0
+dctx_dc_dbl_source	EQU	0xa4
+dctx_dc_dbl_iscale	EQU	0xa8
+dctx_trans_colmaps	EQU	0xac
+dctx_static_colmap	EQU	0xb0
+dctx_ylookup		EQU	0xb4
+dctx_columnofs		EQU	0xb8
+dctx_lightmult		EQU	0xbc
+dctx_trans_cmap_work	EQU	0xc0
+dctx_num_cmaps		EQU	0xc4
+dctx_fbstart		EQU	0xc8
+dctx_fbend		EQU	0xcc
+dctx_endofslot		EQU	0xd0
+dctx_SIZE		EQU	0xd4
+; column_t struct (r_defs.h)
+column_topdelta		EQU	0
+column_length		EQU	1
+column_size		EQU	2
+; patch_t struct (r_defs.h)
+patch_width		EQU	0x00
+patch_height		EQU	0x02
+patch_leftoffset	EQU	0x04
+patch_topoffset		EQU	0x06
+patch_columnofs		EQU	0x08
+}
+\co
+\co Draw span prologue
+\co
+\define DrawSpanDefaultLoad = {
+	ldmia	r1, \{r0-r3\}		; warning, r0 modified!
+}
+\define DrawSpanResampleLoad = {
+	mov	r3, r0			; preserve context pointer in r3
+	ldmia	r1, \{r0-r2,r9\}
+}
+\define DrawSpanPrologueGeneric(exit,shift,load) = {
+	add	r1, r0, #dctx_ds_y	; ASSUMES ds_y, ds_x1, ds_x2
+	ldmia	r1, \{r1-r3\}
+	cmp	r2, #0			; ds_x1 < 0
+	blt	|$exit$|
+	ldr	r5, [r0, #dctx_viewheight]
+	cmp	r1, r5			; ds_y >= viewheight
+	bcs	|$exit$|
+	ldr	r4, [r0, #dctx_scaledwidth]
+	cmp	r3, r4			; ds_x2 >= scaledviewwidth
+	bcs	|$exit$|
+	subs	r10, r3, r2		; r10 count
+	blt	|$exit$|
+	add	r10, r10, #1
+	add	r4, r0, #dctx_ylookup	; ASSUMES ylookup, columnofs
+	ldmia	r4, \{r4, r5\}
+	ldr	r4, [r4, r1, lsl #2]	; ylookup[ds_y]
+	ldr	r5, [r5, r2, lsl $shift$]	; columnofs[ds_x1]
+	add	r6, r4, r5		; r6 = *dest
+	ldr	r4, [r0, #dctx_ds_colormap]
+	ldr	r5, [r0, #dctx_ds_source]
+	add	r1, r0, #dctx_ds_xfrac	; ASSUMES xfrac, yfrac, xstep, ystep
+$load$
+	mov	r0, r0, lsl #10		; pad posx to 32bit
+}
+\define DrawSpanPrologue(exit,shift) = {
+DrawSpanPrologueGeneric($exit$,$shift$,DrawSpanDefaultLoad)
+}
+\co
+\co Standard column lookup in prologue
+\co
+\define DrawColumnStandardLookup(shift) = {
+	ldr	r5, [r5, r1, lsl $shift$]	; columnofs[ds_x]
+}
+\co
+\co Column lookup for combined low/high res functions (e.g. translated columns)
+\co
+\define DrawColumnTranslateLookup(shift) = {
+	ldr	r7, [r0, #dctx_detailshift]
+	cmp	r7, #0
+	ldreq	r5, [r5, r1, lsl #2]
+	ldrne	r5, [r5, r1, lsl #3]
+}
+\co
+\co Standard column sources (dc_source, dc_colormap)
+\co
+\define DrawColumnStandardSource = {
+	ldr	r3, [r0, #dctx_dc_colormap]
+	ldr	r5, [r0, #dctx_dc_source]
+}
+\co
+\co Column sources for resampled columns
+\co
+\define DrawColumnResampleSource = {
+	ldr	r5, [r0, #dctx_resamp_col]
+}
+\co
+\define DrawColumnTextureStdPrologue(prefix) = {
+	mov	r1, r1, lsl #9		; pad to 32 bit
+}
+\co
+\co For Boom there are different texture heights to take into account.
+\co otherwise optimize for 128
+\co
+\if defined DIYBOOM
+\define DrawColumnTextureBaseGenPrologue(prefix,ht,ps,st) = {
+	movs	lr, $ps$, asr #31		; sign of tex pos
+	rsbmi	$ps$, $ps$, #0
+|$prefix$texmodloop|	
+	cmp	$ps$, $ht$, lsl #16		; tex pos mod texheight
+	subhs	$ps$, $ps$, $ht$, lsl #16
+	bhs	|$prefix$texmodloop|
+	cmp	lr, #0
+	rsbmi	$ps$, $ps$, #0
+	subpl	$ps$, $ps$, $ht$, lsl #16	; ensure -ve
+	movs	lr, $st$
+	rsblt	lr, lr, #0
+	cmp	lr, $ht$, lsl #16
+	movge	$st$, #0			; in case step is bigger than texheight use 0
+	cmp	$st$, #0
+	addlt	$st$, $st$, $ht$, lsl #16	; ensure +ve
+}
+\define DrawColumnTextureBasePrologue(prefix) = {
+	ldr	r8, [r0, #dctx_dc_texheight]
+	cmp	r8, #0
+	moveq	r8, #0x80		; default is 128
+DrawColumnTextureBaseGenPrologue($prefix$,r8,r1,r2)
+}
+\define DrawColumnTexturePrologue(prefix) = {
+DrawColumnTextureBasePrologue($prefix$)
+	add	r5, r5, r8		; point to end of post
+}
+\define DrawColumnTexelAddress(reg,src,pos) = {
+	add	$reg$, $src$, $pos$, asr #16
+}
+\else
+\define DrawColumnTexturePrologue(prefix)=DrawColumnTextureStdPrologue($prefix$)
+\define DrawColumnTexelAddress(reg,src,pos) = {
+	add	$reg$, $src$, $pos$, lsr #25
+}
+\endif
+\co
+\co Draw column prologue
+\co IMPORTANT register usage conventions for ALL column drawing functions
+\co (makes it very easy to automatically create code!):
+\co r0 = screenwidth
+\co r1 = frac padded to 32bit (if needed)
+\co r2 = step (if needed)
+\co r3 = *colourmap (if needed)
+\co r4 = *dest
+\co r5 = *source
+\co r6 = counter
+\co
+\define DrawColumnGenericPrologue(prefix,shift,lookup,source,texture,counter) = {
+	add	r1, r0, #dctx_dc_x	; ASSUMES dc_x, dc_yl, dc_yh
+	ldmia	r1, \{r1-r3\}
+	cmp	r2, #0			; ds_yl < 0
+	blt	|$prefix$exit|
+	ldr	r4, [r0, #dctx_scaledwidth]
+	cmp	r1, r4			; ds_x >= viewwidth
+	bcs	|$prefix$exit|
+	ldr	r5, [r0, #dctx_viewheight]
+	cmp	r2, r5			; ds_yh >= viewheight
+	bcs	|$prefix$exit|
+	subs	$counter$, r3, r2	; count register
+	blt	|$prefix$exit|
+	add	$counter$, $counter$, #1
+	add	r4, r0, #dctx_ylookup	; ASSUMES ylookup, columnofs
+	ldmia	r4, \{r4, r5\}
+	ldr	r4, [r4, r2, lsl #2]	; ylookup[ds_yl]
+$lookup$($shift$)
+	add	r4, r4, r5		; r4 = *dest
+	ldr	r1, [r0, #dctx_centery]
+	sub	r1, r2, r1		; yl - centery
+	ldr	r2, [r0, #dctx_dc_iscale]
+	ldr	r3, [r0, #dctx_dc_texmid]
+	mla	r1, r2, r1, r3		; r1 = texmid + (yl-centery)*iscale = frac
+$source$
+$texture$($prefix$)
+	ldr	r0, [r0, #dctx_scrwidth]	; warning, r0 modified!
+}
+\define DrawColumnPrologue(prefix,shift,counter) = {
+DrawColumnGenericPrologue($prefix$,$shift$,DrawColumnStandardLookup,DrawColumnStandardSource,DrawColumnTexturePrologue,$counter$)
+}
+\co
+\co Draw column fuzz prologue (no texture)
+\co
+\define DrawColumnFuzzPrologue(exit) = {
+	add	r1, r0, #dctx_dc_x	; ASSUMES dc_x, dc_yl, dc_yh
+	ldmia	r1, \{r1-r3\}
+	cmp	r2, #0
+	movle	r2, #1
+	ldr	r4, [r0, #dctx_scaledwidth]
+	cmp	r1, r4
+	bcs	|$exit$|
+	ldr	r4, [r0, #dctx_viewheight]
+	sub	r4, r4, #1
+	cmp	r3, r4
+	subge	r3, r4, #1
+	subs	r6, r3, r2		; r6 counter
+	blt	|$exit$|
+	add	r6, r6, #1
+	add	r3, r0, #dctx_ylookup	; ASSUMES ylookup, columnofs
+	ldmia	r3, \{r3, lr\}
+	ldr	r3, [r3, r2, lsl #2]	; ylookup[dc_yl]
+	ldr	r2, [r0, #dctx_detailshift]
+	cmp	r2, #0
+	ldreq	lr, [lr, r1, lsl #2]
+	ldrne	lr, [lr, r1, lsl #3]
+	add	r4, r3, lr		; r4 = *dest
+	ldr	r0, [r0, #dctx_scrwidth] ; screenwidth, warning: r0 changed!
+}
+\co
+\co Get floorclip and ceilingclip for masked columns depending on DIYNOSHORT
+\co drawcontext in r0, dc_x in r12
+\co
+\if defined DIYNOSHORT
+\define DrawMaskedGetClips(floor,ceiling) = {
+	ldr	$floor$, [r11, #dctx_floorclip]
+	ldr	$floor$, [$floor$, r12, lsl #2]
+	ldr	$ceiling$, [r11, #dctx_ceilingclip]
+	ldr	$ceiling$, [$ceiling$, r12, lsl #2]
+}
+\else
+\define DrawMaskedLoadClipShort(reg,off) = {
+	ldr	$reg$, [r11, #$off$]
+	add	$reg$, $reg$, r12, lsl #1
+	ldrb	lr, [$reg$], #1
+	ldrb	$reg$, [$reg$]
+	mov	$reg$, $reg$, lsl #24
+	orr	$reg$, lr, $reg$, asr #16
+}
+\define DrawMaskedGetClips(floor,ceiling) = {
+DrawMaskedLoadClipShort($floor$,dctx_floorclip)
+DrawMaskedLoadClipShort($ceiling$,dctx_ceilingclip)
+}
+\endif
+\co
+\co Draw masked column prologue
+\co
+\define DrawMaskedColumnStdStackPrologue = {
+	sub	sp, sp, #8
+}
+\if defined DIYDEBUGPLOT
+\define DrawMaskedColumnStackPrologue = {
+	ldr	r2, [r0, #dctx_endofslot]
+	str	r2, [sp, #-4]!
+DrawColumnDebugReadFB(r2,r3)
+	stmdb	sp!, \{r2,r3\}
+DrawMaskedColumnStdStackPrologue
+}
+\define DrawMaskedColumnStackReserve = 20
+\define DrawMaskedReadFromPatch(prefix,reg,off,aux) = {
+	add	$reg$, r8, #$off$
+DebugCheckSlot($reg$,$aux$,16,$prefix$wrapabort)
+	ldrb	$reg$, [r8, #$off$]
+}
+\else
+\define DrawMaskedColumnStackPrologue = DrawMaskedColumnStdStackPrologue
+\define DrawMaskedColumnStackReserve = 8
+\define DrawMaskedReadFromPatch(prefix,reg,off,aux) = {
+	ldrb	$reg$, [r8, #$off$]
+}
+\endif
+\define DrawMaskedColumnGenPrologue(prefix,shift,prologue) = {
+$prologue$
+	mov	r11, r0				; save draw context to r11
+	mov	r8, r1				; save column to r8
+	ldr	r12, [r11, #dctx_dc_x]
+	ldr	lr, [r11, #dctx_scaledwidth]
+	cmp	r12, lr
+	bcs	|$prefix$exit|
+	ldr	r9, [r11, #dctx_dc_texmid]
+DrawMaskedReadFromPatch($prefix$,r10,column_topdelta,lr)
+	cmp	r10, #0xff
+	beq	|$prefix$exit|
+DrawMaskedGetClips(r3, r4)
+	stmia	sp, \{r3, r4\}			; store as local vars
+|$prefix$mainloop|
+	add	r2, r11, #dctx_sprtopscreen	; ASSUMES sprtopscreen, spryscale
+	ldmia	r2, \{r2, r3\}
+	mla	r10, r3, r10, r2		; topscreen = sprtopscreen + spryscale*topdelta
+DrawMaskedReadFromPatch($prefix$,lr,column_length,r0)
+	mla	lr, r3, lr, r10			; topscreen + spryscale*topdelta
+	mvn	r0, #0
+	add	r10, r10, r0, lsr #0x10
+	mov	r10, r10, asr #0x10
+	sub	lr, lr, #1
+	mov	lr, lr, asr #0x10
+	ldmia	sp, \{r2, r3\}			; get floorclip, ceilingclip
+	cmp	lr, r2				; yh >= floorclip
+	subge	lr, r2, #1
+	cmp	r10, r3				; yl <= ceilingclip
+	addle	r10, r3, #1
+	subs	r6, lr, r10			; r6 counter
+	blt	|$prefix$nocol|
+	add	r6, r6, #1
+	add	r5, r8, #3
+DrawMaskedReadFromPatch($prefix$,lr,column_topdelta,r1)
+	sub	r1, r9, lr, lsl #16		; texturemid - (topdelta << 16)
+	ldr	r3, [r11, #dctx_dc_colormap]
+	add	r4, r11, #dctx_ylookup		; ASSUMES ylookup, columnofs
+	ldmia	r4, \{r4, lr\}
+	ldr	r4, [r4, r10, lsl #2]
+	ldr	lr, [lr, r12, lsl $shift$]
+	add	r4, r4, lr			; r4 = *dest
+	ldr	lr, [r11, #dctx_centery]
+	sub	lr, r10, lr			; dc_yl - centery
+	ldr	r2, [r11, #dctx_dc_iscale]
+	mla	r1, lr, r2, r1			; r1 = frac
+	cmp	r1, #0
+	movlt	r1, #0
+	ldr	r0, [r11, #dctx_scrwidth]
+	mov	r1, r1, lsl #9			; pad to 32bit
+}
+\define DrawMaskedColumnPrologue(prefix,shift) = DrawMaskedColumnGenPrologue($prefix$,$shift$,DrawMaskedColumnStackPrologue)
+\co
+\co Draw masked column epilogue
+\co
+\define DrawMaskedColumnEpilogue(prefix) = {
+|$prefix$nocol|
+DrawMaskedReadFromPatch($prefix$,lr,column_length,r0)
+	add	lr, lr, #4
+	add	r8, r8, lr
+DrawMaskedReadFromPatch($prefix$,r10,column_topdelta,lr)
+	cmp	r10, #0xff
+	bne	|$prefix$mainloop|
+|$prefix$exit|
+	add	sp, sp, #DrawMaskedColumnStackReserve
+}
+\co
+\co Generalized column plotter inner loop. plotproc fetches and plots a pixel.
+\co Do loop unrolling if DIYNOUNROLL is not defined
+\co
+\if defined DIYNOUNROLL || defined DIYDEBUGPLOT
+\define DrawColumnBodyGeneric(prefix,plotproc) = {
+|$prefix$bigloop|
+$plotproc$
+	subs	r6, r6, #1
+	bgt	|$prefix$bigloop|
+}
+\else
+\define DrawColumnBodyGeneric(prefix,plotproc) = {
+	subs	r6, r6, #4
+	blt	|$prefix$small|
+|$prefix$bigloop|
+$plotproc$
+$plotproc$
+$plotproc$
+$plotproc$
+	subs	r6, r6, #4
+	bge	|$prefix$bigloop|
+|$prefix$small|
+	adds	r6, r6, #4
+	ble	|$prefix$done|
+$plotproc$
+	subs	r6, r6, #1
+	ble	|$prefix$done|
+$plotproc$
+	subs	r6, r6, #1
+	ble	|$prefix$done|
+$plotproc$
+|$prefix$done|
+}
+\endif
+\co
+\if defined DIYDEBUGPLOT
+\co
+\co The code that checks the validity of a pointer into the frame buffer
+\co
+\define DebugCheckPixel(ptr,low,high,abort) = {
+	cmp	$ptr$, $low$
+	cmpcs	$high$, $ptr$
+	bcc	|$abort$|
+}
+\define DebugCheckSlot(ptr,aux,off,abort) = {
+	cmp	$ptr$, #0x8000
+	ldrcs	$aux$, [sp, #$off$]
+	cmpcs	$aux$, $ptr$
+	bcc	|$abort$|
+}
+\co
+\co force an address exception
+\co
+\define ForceException(reg) = {
+	mvn	$reg$, #3
+	ldr	$reg$, [$reg$, #0]
+}
+\co
+\co To identify plotter aborts: the word following the aborting instruction
+\co is 0x544f4c50 (= PLOT) and the one following that is a pointer to the name
+\co of the aborting function.
+\co
+\define AbortReadWrapper(prefix,id,core) = {
+|$prefix$idabort|
+	=	$id$
+	DCD	0
+	ALIGN	4
+$core$
+	DCD	0x544f4c50
+	DCD	|$prefix$idabort|
+}
+\define AbortReadCore0(prefix) = {
+|$prefix$abort|
+ForceException(lr)
+}
+\define AbortReadCore1(prefix,off) = {
+|$prefix$abort|
+	ldr	r10, [sp, #$off$]
+ForceException(lr)
+}
+\define AbortReadCore2(prefix,off) = {
+|$prefix$abort|
+	add	sp, sp, #$off$
+	ldmia	sp, \{r10,r11\}
+ForceException(lr)
+}
+\define AbortReadReadCore2(prefix,off1,off2) = {
+|$prefix$abort|
+	ldr	r10, [sp, #$off1$]
+	ldr	r11, [sp, #$off2$]
+ForceException(lr)
+}
+\define AbortRead0(prefix,id) = AbortReadWrapper($prefix$,$id$,AbortReadCore0($prefix$))
+\define AbortRead1(prefix,off,id) = AbortReadWrapper($prefix$,$id$,AbortReadCore1($prefix$,$off$))
+\define AbortRead2(prefix,off,id) = AbortReadWrapper($prefix$,$id$,AbortReadCore2($prefix$,$off$))
+\define AbortReadRead2(prefix,off1,off2,id) = AbortReadWrapper($prefix$,$id$,AbortReadReadCore2($prefix$,$off1$,$off2$))
+\else
+\define AbortRead0(prefix,id)
+\define AbortRead1(prefix,off,id)
+\define AbortRead2(prefix,off,id)
+\define AbortReadRead2(prefix,off1,off2,id)
+\endif
+\co
+\co Shared code for patch drawing
+\co
+\define DrawPatchPrologue(shift) = {
+	stmdb	sp!, \{r4-r12,lr\}
+	ldrb	r5, [r1, #patch_width]
+	ldrb	lr, [r1, #(patch_width + 1)]
+	mov	lr, lr, lsl #24
+	orr	r5, r5, lr, asr #16	; r5 = width (signed)
+	ldrb	r6, [r1, #patch_height]
+	ldrb	lr, [r1, #(patch_height+1)]
+	mov	lr, lr, lsl #24
+	orr	r6, r6, lr, asr #16	; r6 = height (signed)
+	stmdb	sp!, \{r5, r6\}
+	cmp	r3, #0
+	addlt	r2, r2, r5, lsl #$shift$
+	sublt	r2, r2, #(1 << $shift$)	; if flipped then draw cols right to left
+	mov	r6, #0			; r6 col
+	cmp	r6, r5
+	bge	|Varm_DPexit|		; col >= width?
+	ldr	r10, [r0, #dctx_scrwidth]
+	ldr	r4, [r0, #dctx_static_colmap]
+}
+\define DrawPatchOuterPrologue(prefix) = {
+|$prefix$colloop|
+	add	r7, r1, #patch_columnofs
+	ldr	r7, [r7, r6, lsl #2]	; r7 = patch->columnofs[col]
+	add	r7, r7, r1		; + patch = column
+	ldrb	lr, [r7, #column_topdelta]
+	cmp	lr, #0xff
+	beq	|$prefix$nextcolumn|
+	ldr	r5, [sp, #4]		; height
+|$prefix$drawstrip|
+	add	r8, r7, #3		; r8 *source
+	mla	r9, lr, r10, r2		; r9 *dest = desttop + SCREENWIDTH*patch->topdelta
+	ldrb	r12, [r7, #column_length]
+	subs	r5, r5, r12
+	blt	|$prefix$nextcolumn|	; security measure: abort if out of bounding box!
+	mov	r11, r12
+}
+\define DrawPatchOuterEpilogue(prefix,shift) = {
+	add	r7, r7, r12
+	add	r7, r7, #4
+	ldrb	lr, [r7, #column_topdelta]
+	cmp	lr, #0xff
+	bne	|$prefix$drawstrip|
+|$prefix$nextcolumn|
+	ldr	r5, [sp, #0]		; retrieve width
+	add	r2, r2, r3, lsl #$shift$
+	add	r6, r6, #1
+	cmp	r6, r5
+	blt	|$prefix$colloop|
+|$prefix$exit|
+	add	sp, sp, #8		; skip local vars (width, height)
+PopAndReturn(r4-r12)
+}
+\co
+\co
+\co SHARED between 16bpp and 32bpp
+\co
+\co Draw span pixel fetch
+\co
+\define DrawSpanFetchTrue(to) = {
+	add	$to$, r5, r0, lsr #26
+	and	r9, r1, #0x3f0000
+	ldrb	$to$, [$to$, r9, lsr #10]
+	add	r0, r0, r2, lsl #10
+	ldr	$to$, [r4, $to$, lsl #2]
+	add	r1, r1, r3
+}
+\co
+\co Draw column pixel fetch
+\co
+\define DrawColumnFetchTrue = {
+	ldrb	lr, [r5, r1, lsr #25]
+	add	r1, r1, r2, lsl #9
+	ldr	lr, [r3, lr, lsl #2]
+}
+\co
+\co Draw column translated pixel fetch
+\co
+\define DrawColumnTransFetchTrue = {
+	ldrb	lr, [r5, r1, lsr #25]
+	add	r1, r1, r2, lsl #9
+	ldrb	lr, [r8, lr]
+	ldr	lr, [r3, lr, lsl #2]
+}
+\co
+\co Draw column pixel fetch for Boom
+\co
+\if defined DIYBOOM
+\define DrawColumnFetchBoomTrue = {
+	ldrb	lr, [r5, r1, asr #16]
+	adds	r1, r1, r2
+	ldr	lr, [r3, lr, lsl #2]
+	subcs	r1, r1, r8, lsl #16
+}
+\endif
+\co
+\co RESAMPLING
+\co
+\if defined DIYRESAMPLE
+\co
+\define FixpointUnit = 0x010000
+\define DrawMaskedColumnUnit = (FixpointUnit << 9)
+\if defined DIYBOOM
+\define DrawColumnResampleUnit = FixpointUnit
+\else
+\define DrawColumnResampleUnit = (FixpointUnit << 9)
+\endif
+\co
+\co Do linear interpolation between two regs
+\co
+\define InterpolateLin(to,from1,from2,frac) = {
+	sub	$from2$, $from2$, $from1$
+	mul	$from2$, $frac$, $from2$
+	add	$to$, $from1$, $from2$, asr #16
+}
+\co
+\co Generic linear resampling shared by all resampling modules.
+\co (requires macros RGBGetFirstSeq, RGBGetSecondSeq, RGBGetThirdSeq for _sequentially_
+\co accessing the colour components and RGBSetSecondSeq, RGBSetThirdSeq for reassembly)
+\co
+\define ResampleLinear(to,from1,from2,frac,reg1,reg2) = {
+RGBGetFirstSeq($reg1$,$from1$)
+RGBGetFirstSeq($reg2$,$from2$)
+InterpolateLin($to$,$reg1$,$reg2$,$frac$)
+RGBGetSecondSeq($reg1$,$from1$)
+RGBGetSecondSeq($reg2$,$from2$)
+InterpolateLin($reg1$,$reg1$,$reg2$,$frac$)
+RGBSetSecondSeq($to$,$reg1$)
+RGBGetThirdSeq($reg1$,$from1$)
+RGBGetThirdSeq($reg2$,$from2$)
+InterpolateLin($reg1$,$reg1$,$reg2$,$frac$)
+RGBSetThirdSeq($to$,$reg1$)
+}
+\co
+\co The same for transparent background pixel in trans
+\co
+\define ResampleTransparentLinear(to,from1,from2,back,frac,reg1,reg2,getback3) = {
+RGBGetFirstSeq($reg1$,$from1$)
+RGBGetFirstSeq($reg2$,$from2$)
+InterpolateLin($to$,$reg1$,$reg2$,$frac$)
+RGBGetFirstSeq($reg2$,$back$)
+	add	$to$, $to$, $reg2$
+	mov	$to$, $to$, lsr #1
+RGBGetSecondSeq($reg1$,$from1$)
+RGBGetSecondSeq($reg2$,$from2$)
+InterpolateLin($reg1$,$reg1$,$reg2$,$frac$)
+RGBGetSecondSeq($reg2$,$back$)
+	add	$reg1$, $reg1$, $reg2$
+	mov	$reg1$, $reg1$, lsr #1
+RGBSetSecondSeq($to$,$reg1$)
+RGBGetThirdSeq($reg1$,$from1$)
+RGBGetThirdSeq($reg2$,$from2$)
+InterpolateLin($reg1$,$reg1$,$reg2$,$frac$)
+$getback3$($reg2$,$back$)
+	add	$reg1$, $reg1$, $reg2$
+	mov	$reg1$, $reg1$, lsr #1
+RGBSetThirdSeq($to$,$reg1$)
+}
+\co
+\co
+\co Bilinear interpolation used in spans
+\co warning, this bit of code corrupts r4 and r8-r12!
+\co
+\define ResampleBilinear = {
+	add	r8, r5, r0, lsr #26	; interpolate horizontal #1
+	and	r11, r1, #0x3f0000
+	ldrb	r8, [r8, r11, lsr #10]
+	ldr	r8, [r4, r8, lsl #2]	; r8 = tx0
+	add	r9, r0, #(0x010000 << 10)
+	add	r9, r5, r9, lsr #26	; r9 = tx1
+	ldrb	r9, [r9, r11, lsr #10]
+	ldr	r9, [r4, r9, lsl #2]
+	mov	lr, r0, lsl #6
+	mov	lr, lr, lsr #16		; lr = fraction_x
+ResampleLinear(r7,r8,r9,lr,r11,r12)
+	add	r8, r5, r0, lsr #26	; interpolate horizontal #2
+	add	r11, r1, #0x010000
+	and	r11, r11, #0x3f0000
+	ldrb	r8, [r8, r11, lsr #10]
+	ldr	r8, [r4, r8, lsl #2]	; r8 = tx0
+	add	r9, r0, #(0x010000 << 10)
+	add	r9, r5, r9, lsr #26
+	ldrb	r9, [r9, r11, lsr #10]
+	ldr	r9, [r4, r9, lsl #2]	; r9 = tx1
+ResampleLinear(r11,r8,r9,lr,r4,r12)
+	mov	lr, r1, lsl #16		; interpolate vertical
+	mov	lr, lr, lsr #16		; lr = fraction_y
+ResampleLinear(r8,r7,r11,lr,r4,r9)
+	add	r0, r0, r2, lsl #10
+	ldr	lr, [r3, #dctx_ds_ystep]
+	add	r1, r1, lr
+}
+\co
+\co
+\define DrawSpanResamplePrologue(prefix) = {
+	movs	r8, r2		; only resample if the step sizes are < 1
+	rsblt	r8, r8, #0
+	movs	lr, r9
+	rsblt	lr, lr, #0
+	cmp	r8, #0x010000
+	cmplt	lr, #0x010000
+	bge	|$prefix$noresample|
+}
+\co
+\co Linear interpolation used in columns (normal, translated)
+\co fetch gets the two pixels into r6, r11
+\co
+\define DrawColumnResampleGeneric(prefix,fetch,store,minreg,unit) = {
+	movs	lr, r2
+	rsblt	lr, lr, #0
+	cmp	lr, #$unit$
+	bge	|$prefix$noresample|
+	stmdb	sp!, \{$minreg$-r12\}
+	mov	r10, r6			; make r10 counter
+|$prefix$resampleloop|
+$fetch$
+	mov	lr, lr, lsr #16		; frac
+ResampleLinear(r7,r6,r11,lr,r9,r12)
+$store$
+	subs	r10, r10, #1
+	bgt	|$prefix$resampleloop|
+	ldmia	sp!, \{$minreg$-r12\}
+}
+\if defined DIYDEBUGPLOT
+\define DrawColumnResampleCore(prefix,fetch,store,minreg,maxreg,unit) = {
+DrawColumnResampleGeneric($prefix$,$fetch$,$store$,$minreg$,$unit$)
+	add	sp, sp, #12
+PopAndReturn(r4-$maxreg$)
+|$prefix$noresample|
+}
+\else
+\define DrawColumnResampleCore(prefix,fetch,store,minreg,maxreg,unit) = {
+DrawColumnResampleGeneric($prefix$,$fetch$,$store$,$minreg$,$unit$)
+PopAndReturn(r4-$maxreg$)
+|$prefix$noresample|
+}
+\endif
+\co
+\co Code for resampling. Works for 16bpp and 32bpp :-)
+\co
+\if defined DIYBOOM
+\define ResampleColumnCounterClip = {
+	cmp	r10, #0x100
+	movcs	r10, #0x100		; allow maximum column height 256
+}
+\define ResampleColumnFetchNext(aux) = {
+	mov	$aux$, r1, asr #16
+	ldr	r3, [r5, $aux$, lsl #2]
+	adds	$aux$, $aux$, #1
+	subcs	$aux$, $aux$, r8
+	ldr	$aux$, [r5, $aux$, lsl #2]
+	mov	lr, r1, lsl #16
+	adds	r1, r1, r2
+	subcs	r1, r1, r8, lsl #16
+}
+\define DrawColumnResampleBoomFetch = {
+	mov	r11, r1, asr #16
+	ldrb	r6, [r5, r11]
+	adds	r11, r11, #1
+	ldr	r6, [r3, r6, lsl #2]
+	subcs	r11, r11, r8
+	ldrb	r11, [r5, r11]
+	mov	lr, r1, lsl #16
+	adds	r1, r1, r2
+	ldr	r11, [r3, r11, lsl #2]
+	subcs	r1, r1, r8, lsl #16
+}
+\define DrawColumnResampleBoomLoadFetch = {
+	ldr	r8, [sp, #0]		; reload texture height
+DrawColumnResampleBoomFetch
+}
+\define ResampleColumnShortPrologue = {
+	; ignore short columns
+}
+\define ResampleColumnShortEpilogue = ResampleColumnShortPrologue
+\else
+\define ResampleColumnCounterClip = {
+	cmp	r10, #0x80
+	movcs	r10, #0x80
+}
+\define ResampleColumnFetchNext(aux) = {
+	and	r3, r1, #(0x7f0000 << 9)
+	ldr	r3, [r5, r3, lsr #23]
+	add	$aux$, r1, #(0x010000 << 9)
+	and	$aux$, $aux$, #(0x7f0000 << 9)
+	ldr	$aux$, [r5, $aux$, lsr #23]
+	mov	lr, r1, lsl #7
+	add	r1, r1, r2, lsl #9
+}
+\define ResampleColumnShortPrologue = {
+	stmdb	sp!, \{r5, r10\}
+}
+\define ResampleColumnShortEpilogue = {
+	ldmia	sp!, \{r4, r10\}
+	cmp	r10, #0x80
+	ldrlt	r0, [r4, #0]
+	strlt	r0, [r5], #4
+	cmp	r10, #0x7f
+	strlt	r0, [r5], #4		; two are better than one
+}
+\endif
+\if defined DIYDEBUGPLOT
+\define ResampleColumnShortTexPrologue = {
+ResampleColumnShortPrologue
+	ldr	r9, [r0, #dctx_endofslot]
+	add	lr, r1, r10
+	cmp	r1, #0x8000
+	cmpcs	r9, lr
+	bcc	|RRCabort|
+	add	lr, r2, r10
+	cmp	r2, #0x8000
+	cmpcs	r9, lr
+	bcc	|RRCabort|
+}
+\else
+\define ResampleColumnShortTexPrologue = ResampleColumnShortPrologue
+\endif
+\co
+\define ResampleColumnLoadState = {
+	ldr	r4, [r0, #dctx_dc_colormap]
+	ldr	r5, [r0, #dctx_resamp_col]
+	ldr	r10, [r0, #dctx_dc_texheight]
+}
+\define ResampleColumnLoadTexels = {
+	ldrb	r7, [r1], #1
+	ldr	r7, [r4, r7, lsl #2]
+	ldrb	r8, [r2], #1
+	ldr	r8, [r4, r8, lsl #2]
+}
+\co
+\define ResampleColumnCode = {
+DefineFunction(Rarm_ResampleColumn)
+	stmdb	sp!, \{r4-r10,lr\}	; r0 *drawcontext, r1 *col1, r2 *col2, r3 frac
+ResampleColumnLoadState
+	cmp	r10, #0
+	moveq	r10, #0x80
+ResampleColumnCounterClip
+ResampleColumnShortTexPrologue
+|RRCmainloop|		; r0 corrupted in loop
+ResampleColumnLoadTexels
+ResampleLinear(lr,r7,r8,r3,r0,r9)
+	str	lr, [r5], #4
+	subs	r10, r10, #1
+	bgt	|RRCmainloop|
+ResampleColumnShortEpilogue
+PopAndReturn(r4-r10)
+AbortRead0(RRC, "Rarm_ResampleColumn")
+}
+\co
+\co
+\define ResampleThingColumnCode = {
+DefineFunction(R_ResampleThingColumn)
+	stmdb	sp!, \{r4-r10,lr\}	; see Rarm_ResampleColumn
+ResampleColumnLoadState
+|RRTCmainloop|
+ResampleColumnLoadTexels
+ResampleLinear(lr,r7,r8,r3,r0,r9)
+	str	lr, [r5], #4
+	subs	r10, r10, #1
+	bgt	|RRTCmainloop|
+PopAndReturn(r4-r10)
+}
+\co
+\co
+\define ResampleTranslatedThingColumnCode = {
+DefineFunction(R_ResampleTranslatedThingColumn)
+	stmdb	sp!, \{r4-r11,lr\}
+ResampleColumnLoadState
+	ldr	r11, [r0, #dctx_dc_translation]
+|RRTTCmainloop|
+	ldrb	r7, [r1], #1
+	ldrb	r7, [r11, r7]
+	ldr	r7, [r4, r7, lsl #2]
+	ldrb	r8, [r2], #1
+	ldrb	r8, [r11, r8]
+	ldr	r8, [r4, r8, lsl #2]
+ResampleLinear(lr,r7,r8,r3,r0,r9)
+	str	lr, [r5], #4
+	subs	r10, r10, #1
+	bgt	|RRTTCmainloop|
+PopAndReturn(r4-r11)
+}
+\co
+\co
+\co Plot resampled column
+\co
+\if defined DIYBOOM
+\define DrawColumnTextureResPrologue(prefix) = {
+DrawColumnTextureBasePrologue($prefix$)
+	add	r5, r5, r8, lsl #2	; position to end of post
+}
+\else
+\define DrawColumnTextureResPrologue(prefix)=DrawColumnTextureStdPrologue($prefix$)
+\endif
+\co
+\co Generic resampled column plot
+\co
+\define DrawResampledColumnGenCode(name,prelab,prologue,epilogue,store,prepare,aux,max) = {
+DefineFunction($name$)
+$prologue$($max$)
+DrawColumnGenericPrologue($prelab$,#2,DrawColumnStandardLookup,DrawColumnResampleSource,DrawColumnTextureResPrologue,r10)
+$prepare$
+|$prelab$mainloop|
+ResampleColumnFetchNext($aux$)
+	mov	lr, lr, lsr #16
+ResampleLinear(r7,r3,$aux$,lr,r9,r6)
+DrawResampledColumnStore($store$)
+	subs	r10, r10, #1
+	bgt	|$prelab$mainloop|
+|$prelab$exit|
+$epilogue$($max$)
+}
+\if defined DIYDEBUGPLOT
+\define DrawResampledColumnPrologue(max) = {
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnDebugReadFB(r1,r2)
+	stmdb	sp!, \{r1, r2\}
+}
+\define DrawResampledColumnEpilogue(max) = {
+	add	sp, sp, #8
+PopAndReturn(r4-$max$)
+}
+\define DrawResampledColumnStore(store) = {
+	ldmia	sp, \{r6,r9\}
+DebugCheckPixel(r4,r6,r9,$prelab$abort)
+$store$
+}
+\else
+\define DrawResampledColumnPrologue(max) = {
+	stmdb	sp!, \{r4-$max$,lr\}
+}
+\define DrawResampledColumnEpilogue(max) = {
+PopAndReturn(r4-$max$)
+}
+\define DrawResampledColumnStore(store) = $store$
+\endif
+\define DrawResampledColumnCode(name,prelab,store,prepare,aux,max) = DrawResampledColumnGenCode($name$,$prelab$,DrawResampledColumnPrologue,DrawResampledColumnEpilogue,$store$,$prepare$,$aux$,$max$)
+\if defined DIYBOOM
+\define DrawResampledColumnInstantiate(name,prelab,store,prepare) = {
+DrawResampledColumnCode($name$,$prelab$,$store$,$prepare$,r11,r11)
+AbortRead2($prelab$, 32, "$name$")
+}
+\else
+\define DrawResampledColumnInstantiate(name,prelab,store,prepare) = {
+DrawResampledColumnCode($name$,$prelab$,$store$,$prepare$,r8,r10)
+AbortRead1($prelab$, 32, "$name$")
+}
+\endif
+\co
+\co Resample transparent pixel
+\co
+\define ResamplePixelTranslucent(back,getback3,fetch) = {
+$fetch$
+	mov	lr, lr, lsr #16
+ResampleTransparentLinear(r7,r6,r11,$back$,lr,r8,r9,$getback3$)
+}
+\co
+\co Shared resampling fetch code
+\co
+\define DrawColumnResampleFetch = {
+	ldrb	r6, [r5, r1, lsr #25]
+	ldr	r6, [r3, r6, lsl #2]
+	add	r11, r1, #(0x010000 << 9)
+	ldrb	r11, [r5, r11, lsr #25]
+	ldr	r11, [r3, r11, lsl #2]
+	mov	lr, r1, lsl #7
+	add	r1, r1, r2, lsl #9
+}
+\define DrawColumnTransResampleFetch = {
+	ldrb	r6, [r5, r1, lsr #25]
+	ldrb	r6, [r8, r6]
+	ldr	r6, [r3, r6, lsl #2]
+	add	r11, r1, #(0x010000 << 9)
+	ldrb	r11, [r5, r11, lsr #25]
+	ldrb	r11, [r8, r11]
+	ldr	r11, [r3, r11, lsl #2]
+	mov	lr, r1, lsl #7
+	add	r1, r1, r2, lsl #9
+}
+\else
+\define DrawColumnResampleCore(prefix,fetch,store,minreg,maxreg,unit) = {
+	; no resample
+}
+\endif

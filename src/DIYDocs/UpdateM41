@@ -1,0 +1,249 @@
+DOOM IT YOURSELF 4.1
+====================
+
+
+
+
+For general information on how to update see the previous UpdateM*-files.
+
+There were a lot of changes in the low-level stuff, so read these Docs
+carefully before trying to build a DIY engine!
+
+
+
+News 4.1:
+---------
+
+- Changed some switches and paths to a more standard installation. -mstubs
+  is now used in both compilation and linking (requires C:h and C:o).
+  Socketlib is no longer assumed at C:sockets but under its own path
+  socketlib$path.
+
+- Doom It Yourself license changed to GPL; all prior license agreements are
+  void. For more information see the file OrigDocs.DOOMLIC. This change also
+  means the end of the patch releases, from now on there will only be the
+  full source archive.
+
+- Some macro names changed to get a more uniform naming scheme within DIY:
+  USE_TRANSPARENCY is now called DIYTRANSPARENCY and RESAMPLE_TEXTURES is now
+  called DIYRESAMPLE. There's also a new macro DIYNOSHORT which will replace
+  the short type with int if defined.
+  WARNING: if you change the setting of DIYNOSHORT (in the Makefile), you MUST
+  throw away all object files AND the assembler plotters s.plot*. Otherwise
+  you'll get bad crashes! The correct place to put -DDIYNOSHORT is the
+  variable ASCCFLAGS in the Makefile, NOT CFLAGS or MPPFLAGS!!!
+
+- Assembler plotters totally overhauled. The old plotters arm_plot* etc are
+  gone, now they're created out of macros in the m directory instead (plotterlib
+  is code shared between all colour depths, the remaining plotlib* files are for
+  the corresponding colour depths).
+  This means you can no longer modify the assembler plotters by hand because
+  these modifications will be overwritten the next time the macro preprocessor
+  mpp is run. Rather you'll have to modify the macro source files (which will
+  be harder for the uninitiated, but I have to think in terms of maintaining
+  the code in its entirety here; as such keeping the assembler files was not
+  an option).
+  The most obvious effect of this change is that there's now a 16bpp resampling
+  engine as well. The main reasons for the switch were different, however:
+
+  a) Maintaining the assembler plotters had turned into quite a nightmare
+     with lots of duplicated code all over the place. The new system helps
+     a lot in minimizing redundancy.
+
+  b) Lack of flexibility, most notably conditional assembly. For instance the
+     plotters for Boom needed some changes compared to the normal ones, so
+     I needed somthing like #ifdef DIYBOOM in assembler. This was also a
+     problem with the setting of DIYNOSHORT etc.
+
+  c) Easier debugging of the plotters. If you add -DDIYDEBUGPLOT to the
+     MPPFLAGS in the Makefile you can build a Doom engine that checks the
+     validity of the address before it stores a pixel and forces a clean
+     abort if it's violated. Use this version if you get crashes and send
+     me the abort log as well as details about the exact DIY variant.
+     IMPORTANT NOTE: this is currently only supported for 16bpp engines
+     at high resolution! Now that resampling is possible in this depth too,
+     this shouldn't be a limitation (since most of the resampling code is
+     shared between 16bpp and 32bpp, fixing 16bpp problems should take care
+     of 32bpp problems as well). Compiling any of the other colour depths
+     with DIYDEBUGPLOT defined will result in undefined plotters, so don't
+     do it!
+     NOTE #2: of course the debugging plotters are considerably slower.
+     What did you expect? Yes, I could make them faster, but I don't want
+     to invest the time into something that is by definition volatile.
+
+  The plotters also no longer reference any global variables, instead they
+  receive a pointer to a draw context. This has several advantages like
+  efficiency or making it easier to write plotter macros (no more PC-relative
+  memory accesses). The draw context is defined in h.r_draw. Make sure you
+  mirror any changes to draw_context_t (h.r_context) in m.plotterlib.
+  In case you have a StrongARM RISC PC you might get slight speed improvements
+  if you avoid loop unrolling in the column plotters (i.e. the plotters
+  occupy less space). You can forbid loop unrolling by adding -DDIYNOUNROLL
+  to MPPFLAGS. Building debug plotters always forbids loop unrolling!
+
+- The fixpoint code is created out of macros now too in order to configure
+  it better to the machine in use. This is controlled by the macro
+  FIXPOINTFLAGS in the Makefile (whenever you change the settings of
+  FIXPOINTFLAGS you must delete s.fixpoint afterwards). Possible values
+  are
+
+  * -DM_LONGMULT: use the long multiplier for fixpoint multiplications. The
+    processor must support this, of course (e.g. StrongARM)
+
+  * -DM_FPA: use the FPA for fixpoint divisions. This will be very slow unless
+    your machine actually has floating point hardware.
+
+- The macro FREQUENCY_MULTIPLIER in i_sound.c was removed, it's now a run
+  time option that can be set in doomrc (freq_mult). Legal values are 1, 2
+  and 4.
+
+- The voices code (SFX) is created out of macros as well. This allows for a
+  new type of configuration, resampling the sound samples. That means much
+  higher sound quality especially for higher sample rates (freq_mult in doomrc)
+  at a slight speed penality (about 4% slower on a SA RPC). While it doesn't
+  make too much of a difference on the original Doom you should try this
+  with some addons containing longer samples like SIMP2SND, PULPFICT, STARDOOM
+  and so on. It is however strongly discouraged unless you have a SA RPC
+  because the additional multiplication required per sample per channel will
+  cost you very dearly otherwise. You can use sound resampling by changing the
+  setting of resamp_sound in doomrc.
+
+- Removed HARDWARE_GAMMA and BUFFERED_KEYBOARD macros. They're now run-time
+  configurations that can be changed in doomrc.
+
+- Plotters are now Boom-aware. This means special treatment of short textures.
+  Code outline by Darren Salt.
+
+- After much experimentation got a special environment handler working for
+  the Shared C Library that should be able to perform clean aborts even in
+  undefined APCS environments (e.g. parts of the plotters using r10/r11).
+  This should overcome machine freezes unless the stack itself has been
+  corrupted.
+
+- New switch -minlight x for setting the minimum light level where x is a
+  number between 0 (totally black) and 256 (totally white, i.e. cheating).
+  Maybe it's my colour card, but some people seem to design their WADs with
+  rather odd lighting levels (e.g. Earth) which make it close to impossible
+  to see your enemies most of the time. The default value is 32.
+
+- New switch -nosound to run without sound, basically for debugging only.
+
+- New switch -noframes to run without asynchronous frame buffers; instead
+  each screen is build into a normal buffer in application memory and copied
+  to the screen. Again, this is mostly for debugging. A side effect of this
+  is that DIY can now run in all screen modes you can display; if it can't
+  install frame buffers due to lack of screen memory it automatically switches
+  to the -noframes method (which of course will be quite a bit slower).
+
+- ARM Assembler plotters are now used by adding DIYARMASS to ASCCFLAGS (this
+  is the default). In case you experience problems with crashes you could
+  try compiling with the original C plotters instead (which will be slower,
+  of course). Unfortunately I still haven't found the reason for the freezes
+  in the resampling engine. Don't forget you have to delete all object files
+  and the s.plot* files when you change the setting of DIYARMASS.
+
+- Made sprite plotting more efficient again. The last improvement was sorting
+  the drawsegs for being able to determine the intersections with the sprites
+  faster. Now Bucketsort is used instead of Quicksort, bringing down complexity
+  from n*log(n) to n where n is the number of drawsegs.
+
+- Finally fixed the naming conventions of the executables. The engines are
+  no longer called "!RunImage*" but either "!Doom*" or "!Boom*". The
+  differences to the old version apart from the naming conventions are:
+
+  * the -resample switch does no longer automatically assume -true, you have
+    to use it in combination with -high or -true.
+  * there's a new switch -boom which selects a Boom engine.
+
+  A new version of !SetMode to use this and a new frontend which allows you
+  to easily select Doom or Boom engines on a per-game basis are available too.
+
+- Support large textures (required for e.g. Darkening II).
+
+
+
+
+Bugfixes:
+---------
+
+- Fixed bug in the resampling engine that would cause garbage at the bottom
+  of short textures (stairs etc).
+
+- Fixed bug introduced in M4 where the main WADs were only recognized by
+  filetype without extension.
+
+- Finally cleared the screen when changing from game state to a fixed size
+  screen ;-). Also fixed slow screen wipe in high resolutions.
+
+- Using higher frequencies for SFX works again (small bug introduced in the
+  transition to voices).
+
+
+
+
+Known Bugs:
+-----------
+
+- Concerning the freezes in the resampling engine see the separate file
+  FreezeRes.
+
+- Building a DIY engine linked against socketlib will cause all files to be
+  left open. I have no idea where exactly this comes from, but apparently
+  socketlib and UnixLib are no friends. Fortunately UnixLib37 can be built
+  with net support; I made the additional library which can be downloaded
+  from the DIY page as well.
+  
+
+
+
+
+
+Andreas Dehmel, 26-Apr-2000
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+	Ruthless and vicious, he'll stomp on your face
+	Deadly malicious, stay out of his pace
+	He'll rip your eyes out, don't look the wrong way
+	And once you meet him there's no time to pray
+	He'll rip your heart out, make you eat your own lips
+	He'll crack your elbows and crush fingertips
+	He'll make you wish that you didn't exist
+	Cause Sargent "D" is coming and you're on his list.
+
+	Don't cut the line cause he'll cut off your legs
+	Don't take your time or you'll spend time with the dead
+	Don't try to trick him, he'll fill you with lead
+	Don't beg for mercy, he'll piss on your head
+	He'll kill your sister, then mail back the tits
+	He'll beat you senseless, then break out the whips
+	He'll make you wish that you didn't exist
+	Cause Sargent "D" is coming and you're on his list.
+
+	He'll put gas on your kids, then throw them a match
+	He'll back the car over grandma, then dissect her cat
+	With his Stormtroopers of Death he'll come to your town
+	Their Uzis rip through flesh, then it's time to chow down
+	Their cause is justified, their reason is clear
+	The word revenge is all that they hear
+	He'll make you wish that you didn't exist
+	Cause Sargent "D" is coming and you're on his list.
+
+			(S.O.D. -- Sargent "D" and the S.O.D.)
+
+	;-)

@@ -1,0 +1,721 @@
+\co
+\co PLOTTER MACRO LIBRARY FOR 8bpp
+\co
+\co Load shared definitions
+\co
+\include "m/plotterlib"
+\co
+\co
+\co Draw span pixel fetch
+\co
+\define DrawSpanFetch8(to) = {
+	add	$to$, r5, r0, lsr #26
+	and	r9, r1, #0x3f0000
+	ldrb	$to$, [$to$, r9, lsr #10]
+	add	r0, r0, r2, lsl #10
+	ldrb	$to$, [r4, $to$]
+	add	r1, r1, r3
+}
+\define DrawSpanAlign8(prefix) = {
+	tst	r6, #3
+	beq	|$prefix$aligned|
+DrawSpanFetch8(r8)
+	strb	r8, [r6], #1
+	subs	r10, r10, #1
+	ble	|$prefix$exit|
+}
+\co
+\co Draw column pixel fetch
+\co
+\define DrawColumnFetch8 = {
+	ldrb	lr, [r5, r1, lsr #25]
+	add	r1, r1, r2, lsl #9
+	ldrb	lr, [r3, lr]
+}
+\define DrawColumnPlot8 = {
+DrawColumnFetch8
+	strb	lr, [r4], r0
+}
+\define DrawColumnLowPlot8 = {
+DrawColumnFetch8
+	strb	lr, [r4, #1]
+	strb	lr, [r4], r0
+}
+\co
+\co Draw translated column pixel fetch
+\co
+\define DrawColumnTransFetch8 = {
+	ldrb	lr, [r5, r1, lsr #25]
+	add	r1, r1, r2, lsl #9
+	ldrb	lr, [r8, lr]
+	ldrb	lr, [r3, lr]
+}
+\define DrawColumnTransPlot8 = {
+DrawColumnTransFetch8
+	strb	lr, [r4], r0
+}
+\define DrawColumnLowTransPlot8 = {
+DrawColumnTransFetch8
+	strb	lr, [r4, #1]
+	strb	lr, [r4], r0
+}
+\co
+\co Standard plotting for Boom / normal
+\co
+\if defined DIYBOOM
+\define DrawColumnFetchNormal8 = {
+	ldrb	lr, [r5, r1, asr #16]
+	adds	r1, r1, r2
+	ldrb	lr, [r3, lr]
+	subcs	r1, r1, r8, lsl #16
+}
+\define DrawColumnPlotNormal8 = {
+DrawColumnFetchNormal8
+	strb	lr, [r4], r0
+}
+\define DrawColumnLowPlotNormal8 = {
+DrawColumnFetchNormal8
+	strb	lr, [r4, #1]
+	strb	lr, [r4], r0
+}
+\else
+\define DrawColumnFetchNormal8=DrawColumnFetch8
+\define DrawColumnPlotNormal8=DrawColumnPlot8
+\define DrawColumnLowPlotNormal8=DrawColumnLowPlot8
+\endif
+\co
+\co
+\co
+\co
+\co START CREATING ASSEMBLER OUTPUT
+\co
+DefineHeader(8)
+
+
+
+DefineRegisters
+
+
+
+DefineStructs
+
+
+
+\co
+\if defined DIYARMASS
+\co
+
+
+DefineFunction(R_DrawSpan)
+	stmdb	sp!, {r4-r10,lr}
+DrawSpanPrologue(RDSexit, #2)
+DrawSpanAlign8(RDS)
+DrawSpanAlign8(RDS)
+DrawSpanAlign8(RDS)
+|RDSaligned|
+	subs	r10, r10, #8
+	blt	|RDSsmall|
+|RDSbigloop|
+DrawSpanFetch8(r7)
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #8
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #16
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #24
+DrawSpanFetch8(lr)
+DrawSpanFetch8(r8)
+	orr	lr, lr, r8, lsl #8
+DrawSpanFetch8(r8)
+	orr	lr, lr, r8, lsl #16
+DrawSpanFetch8(r8)
+	orr	lr, lr, r8, lsl #24
+	stmia	r6!, {r7, lr}
+	subs	r10, r10, #8
+	bge	|RDSbigloop|
+|RDSsmall|
+	adds	r10, r10, #8
+	ble	|RDSexit|
+	tst	r10, #4
+	beq	|RDStiny|
+DrawSpanFetch8(r7)
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #8
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #16
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #24
+	str	r7, [r6], #4
+	ands	r10, r10, #3
+	beq	|RDSexit|
+|RDStiny|
+	cmp	r10, #0
+	beq	|RDSexit|
+DrawSpanFetch8(r8)
+	strb	r8, [r6], #1
+	subs	r10, r10, #1
+	ble	|RDSexit|
+DrawSpanFetch8(r8)
+	strb	r8, [r6], #1
+	subs	r10, r10, #1
+	ble	|RDSexit|
+DrawSpanFetch8(r8)
+	strb	r8, [r6], #1
+|RDSexit|
+PopAndReturn(r4-r10)
+
+
+
+DefineFunction(R_DrawSpanLow)
+	stmdb	sp!, {r4-r10,lr}
+DrawSpanPrologue(RDSLexit, #3)
+	tst	r6, #3
+	beq	|RDSLaligned|
+DrawSpanFetch8(r8)
+	strb	r8, [r6], #1
+	strb	r8, [r6], #1
+	subs	r10, r10, #1
+	ble	|RDSLexit|
+|RDSLaligned|
+	subs	r10, r10, #4
+	blt	|RDSLsmall|
+|RDSLbigloop|
+DrawSpanFetch8(r7)
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #16
+	orr	r7, r7, r7, lsl #8
+DrawSpanFetch8(lr)
+DrawSpanFetch8(r8)
+	orr	lr, lr, r8, lsl #16
+	orr	lr, lr, lr, lsl #8
+	stmia	r6!, {r7, lr}
+	subs	r10, r10, #4
+	bge	|RDSLbigloop|
+|RDSLsmall|
+	adds	r10, r10, #4
+	ble	|RDSLexit|
+	tst	r10, #2
+	beq	|RDSLtiny|
+DrawSpanFetch8(r7)
+DrawSpanFetch8(r8)
+	orr	r7, r7, r8, lsl #16
+	orr	r7, r7, r7, lsl #8
+	str	r7, [r6], #4
+	ands	r10, r10, #1
+	beq	|RDSLexit|
+|RDSLtiny|
+	tst	r10, #1
+	beq	|RDSLexit|
+DrawSpanFetch8(r7)
+	strb	r7, [r6], #1
+	strb	r7, [r6], #1
+|RDSLexit|
+PopAndReturn(r4-r10)
+
+
+
+\define DrawColumnCode(max) = {
+DefineFunction(R_DrawColumn)
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnPrologue(RDC, #2, r6)
+DrawColumnBodyGeneric(RDC, DrawColumnPlotNormal8)
+|RDCexit|
+PopAndReturn(r4-$max$)
+
+
+
+DefineFunction(R_DrawColumnLow)
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnPrologue(RDCL, #3, r6)
+DrawColumnBodyGeneric(RDCL, DrawColumnLowPlotNormal8)
+|RDCLexit|
+PopAndReturn(r4-$max$)
+}
+
+
+\if defined DIYBOOM
+DrawColumnCode(r8)
+\else
+DrawColumnCode(r6)
+\endif
+
+
+
+DefineFunction(Rarm_DrawMaskedColumn)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMC, #2)
+DrawColumnBodyGeneric(RDMCcol_, DrawColumnPlot8)
+DrawMaskedColumnEpilogue(RDMC)
+PopAndReturn(r4-r12)
+
+
+
+DefineFunction(Rarm_DrawMaskedColumnLow)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMCL, #3)
+DrawColumnBodyGeneric(RDMCLcol_, DrawColumnLowPlot8)
+DrawMaskedColumnEpilogue(RDMCL)
+PopAndReturn(r4-r12)
+
+
+
+\define DrawColumnFuzzFetch8 = {
+	ldr	lr, [r3, r2, lsl #2]
+	ldrb	lr, [r4, lr]
+	ldrb	lr, [r7, lr]
+	add	r2, r2, #1
+	cmp	r2, r1
+	movge	r2, #0
+}
+\define DrawColumnFuzzPlot8 = {
+DrawColumnFuzzFetch8
+	strb	lr, [r4], r0
+}
+\define DrawColumnLowFuzzPlot8 = {
+DrawColumnFuzzFetch8
+	strb	lr, [r4, #1]
+	strb	lr, [r4], r0
+}
+DefineFunction(R_DrawFuzzColumn)
+	stmdb	sp!, {r4-r7,lr}
+	add	r5, r0, #dctx_fuzztable	; ASSUMES fuzztable, fuzzpos, fuzzoffset, fuzz_cmap
+DrawColumnFuzzPrologue(RDFCexit)
+	ldmia	r5, {r1, r2, r3, r7}	; load fuzztable, ...
+	bne	|RDFCLow|		; flag still setup correctly from detailshift
+DrawColumnBodyGeneric(RDFChi_, DrawColumnFuzzPlot8)
+	str	r2, [r5, #4]		; store fuzzpos
+PopAndReturn(r4-r7)
+|RDFCLow|
+DrawColumnBodyGeneric(RDFClow_, DrawColumnLowFuzzPlot8)
+	str	r2, [r5, #4]
+|RDFCexit|
+PopAndReturn(r4-r7)
+
+
+
+DefineFunction(R_DrawTranslatedColumn)
+	stmdb	sp!, {r4-r8,lr}
+	ldr	r8, [r0, #dctx_dc_translation]
+DrawColumnGenericPrologue(RDTC, #2, DrawColumnTranslateLookup,DrawColumnStandardSource,DrawColumnTextureStdPrologue,r6)
+	cmp	r7, #0
+	bne	|RDTCLow|
+DrawColumnBodyGeneric(RDTChi_, DrawColumnTransPlot8)
+PopAndReturn(r4-r8)
+|RDTCLow|
+DrawColumnBodyGeneric(RDTClow_, DrawColumnLowTransPlot8)
+|RDTCexit|
+PopAndReturn(r4-r8)
+
+
+
+
+\define DrawPatchPlot8 = {
+	ldrb	lr, [r8], #1
+	strb	lr, [r9], r10
+	subs	r11, r11, #1
+	ble	|Varm_DPnextstrip|
+}
+\define DrawPatchBlock8(reg) = {
+	mov	$reg$, $reg$, lsr #8
+	strb	$reg$, [r9], r10
+}
+\define DrawPatchBlockFull8(reg) = {
+	strb	$reg$, [r9], r10
+DrawPatchBlock8($reg$)
+DrawPatchBlock8($reg$)
+DrawPatchBlock8($reg$)
+}
+\define DrawPatchTransPlot8 = {
+	ldrb	lr, [r8], #1
+	ldrb	lr, [r4, lr]
+	strb	lr, [r9], r10
+	subs	r11, r11, #1
+	ble	|Varm_DPTnextstrip|
+}
+\define DrawPatchTransBlock8(shift) = {
+	and	lr, r12, #(0xff << $shift$)
+	ldrb	lr, [r4, lr, lsr #$shift$]
+	strb	lr, [r9], r10
+}
+DefineFunction(Varm_DrawPatch)
+DrawPatchPrologue(0)
+	cmp	r4, #0
+	bne	|Varm_DPTcolloop|
+DrawPatchOuterPrologue(Varm_DP)
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot8
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot8
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot8
+|Varm_DPaligned|
+	subs	r11, r11, #8
+	blt	|Varm_DPsmallstrip|
+|Varm_DPbigstrip|
+	ldmia	r8!, {r4, lr}
+DrawPatchBlockFull8(r4)
+DrawPatchBlockFull8(lr)
+	subs	r11, r11, #8
+	bge	|Varm_DPbigstrip|
+|Varm_DPsmallstrip|
+	adds	r11, r11, #8
+	ble	|Varm_DPnextstrip|
+	tst	r11, #4
+	beq	|Varm_DPtinystrip|
+	ldr	lr, [r8], #4
+DrawPatchBlockFull8(lr)
+|Varm_DPtinystrip|
+	ands	r11, r11, #3
+	beq	|Varm_DPnextstrip|
+	ldr	lr, [r8], #4
+	strb	lr, [r9], r10
+	subs	r11, r11, #1
+	ble	|Varm_DPnextstrip|
+	mov	lr, lr, lsr #8
+	strb	lr, [r9], r10
+	subs	r11, r11, #1
+	movgt	lr, lr, lsr #8
+	strgtb	lr, [r9], r10
+|Varm_DPnextstrip|
+DrawPatchOuterEpilogue(Varm_DP, 0)
+					; for modes without true 256 colour palette
+DrawPatchOuterPrologue(Varm_DPT)
+	tst	r8, #3
+	beq	|Varm_DPTaligned|
+DrawPatchTransPlot8
+	tst	r8, #3
+	beq	|Varm_DPTaligned|
+DrawPatchTransPlot8
+	tst	r8, #3
+	beq	|Varm_DPTaligned|
+DrawPatchTransPlot8
+|Varm_DPTaligned|
+	subs	r11, r11, #4
+	blt	|Varm_DPTsmallstrip|
+|Varm_DPTbigstrip|
+	ldr	r12, [r8], #4
+DrawPatchTransBlock8(0)
+DrawPatchTransBlock8(8)
+DrawPatchTransBlock8(16)
+DrawPatchTransBlock8(24)
+	subs	r11, r11, #4
+	bge	|Varm_DPTbigstrip|
+|Varm_DPTsmallstrip|
+	adds	r11, r11, #4
+	ble	|Varm_DPTnextstrip|
+	ldr	r12, [r8], #4
+DrawPatchTransBlock8(0)	
+	subs	r11, r11, #1
+	ble	|Varm_DPTnextstrip|
+DrawPatchTransBlock8(8)
+	subs	r11, r11, #1
+	ble	|Varm_DPTnextstrip|
+DrawPatchTransBlock8(16)
+|Varm_DPTnextstrip|
+	ldrb	r12, [r7, #column_length]
+DrawPatchOuterEpilogue(Varm_DPT, 0)
+
+
+
+
+\endif
+
+
+DefineFunction(InstallPalette)
+	stmdb	sp!,{r4,lr}
+	mov	r2, r0
+	sub	sp, sp, #8
+	add	r1, sp, #3
+	mov	r3, #0
+	mov	r0, #0x0c
+|IPaLoop|
+	strb	r3, [r1, #0]
+	ldrb	r4, [r2], #1
+	mov	r4, r4, lsl #8
+	orr	r4, r4, #0x10
+	ldrb	lr, [r2], #1
+	orr	r4, r4, lr, lsl #16
+	ldrb	lr, [r2], #1
+	orr	r4, r4, lr, lsl #24
+	str	r4, [r1, #1]
+	swi	0x20007			; XOS_Word,12 (set palette)
+	add	r3, r3, #1
+	cmp	r3, #0x100
+	blt	|IPaLoop|
+	add	sp, sp, #8
+PopAndReturn(r4)
+
+
+
+
+DefineFunction(ReadPalette)
+	stmdb	sp!, {r4, lr}	; r0 *buffer, r1, buffersize
+	mov	r2, r0
+	mov	r3, r1
+	mvn	r0, #0
+	mvn	r1, #0
+	mov	r4, #0
+	swi	0x6075c		; XColourTrans_ReadPalette
+PopAndReturn(r4)
+
+
+
+DefineFunction(ReturnClosestColour)
+	orr	r0, r0, r1, lsl #8
+	orr	r0, r0, r2, lsl #16
+	mov	r0, r0, lsl #8
+	swi	0x60744			; XColourTrans_ReturnColourNumber
+ReturnFromLR
+
+
+
+DefineFunction(Rarm_DrawViewBorder)
+	stmdb	sp!, {r4-r12,lr}	; will be overwritten later on anyway.
+	add	r4, sp, #0x28
+	ldmia	r4, {r4, r5}
+	add	r3, r3, #3
+	bic	r3, r3, #3		; word-align side
+	mul	r6, r2, r4		; top * SCREENWIDTH
+	add	r6, r6, r3		; + side
+	subs	r10, r6, #0x1c
+	blt	|Rarm_DVBsmalltop|
+|Rarm_DVBbigtop|
+	ldmia	r1!, {r6-r9,r11,r12,lr}
+	stmia	r0!, {r6-r9,r11,r12,lr}
+	subs	r10, r10, #0x1c
+	bge	|Rarm_DVBbigtop|
+|Rarm_DVBsmalltop|
+	adds	r10, r10, #0x1c
+	ble	|Rarm_DVBtopdone|
+	tst	r10, #0x10
+	ldmneia	r1!, {r6-r9}
+	stmneia	r0!, {r6-r9}
+	tst	r10, #8
+	ldmneia	r1!, {r7,r8}
+	stmneia	r0!, {r7,r8}
+	tst	r10, #4
+	ldrne	r7, [r1], #4
+	strne	r7, [r0], #4
+|Rarm_DVBtopdone|
+	sub	r6, r5, #1		; viewheight - 1
+	sub	r7, r4, r3, lsl #1
+	add	r0, r0, r7
+	add	r1, r1, r7
+|Rarm_DVBlineloop|
+	mov	r8, r3, lsl #1
+	subs	r10, r8, #0x10
+	blt	|Rarm_DVBsmallside|
+|Rarm_DVBbigside|
+	ldmia	r1!, {r8,r9,r11,r12}
+	stmia	r0!, {r8,r9,r11,r12}
+	subs	r10, r10, #0x10
+	bge	|Rarm_DVBbigside|
+|Rarm_DVBsmallside|
+	adds	r10, r10, #0x10
+	ble	|Rarm_DVBsidedone|
+	tst	r10, #8
+	ldmneia	r1!, {r8,r9}
+	stmneia	r0!, {r8,r9}
+	tst	r10, #4
+	ldrne	r9, [r1], #4
+	strne	r9, [r0], #4
+|Rarm_DVBsidedone|
+	add	r0, r0, r7
+	add	r1, r1, r7
+	subs	r6, r6, #1
+	bgt	|Rarm_DVBlineloop|
+	mul	r6, r2, r4		; copy bottom -- see above
+	add	r6, r6, r3
+	subs	r10, r6, #0x1c
+	blt	|Rarm_DVBsmallbot|
+|Rarm_DVBbigbot|
+	ldmia	r1!, {r6-r9,r11,r12,lr}
+	stmia	r0!, {r6-r9,r11,r12,lr}
+	subs	r10, r10, #0x1c
+	bge	|Rarm_DVBbigbot|
+|Rarm_DVBsmallbot|
+	adds	r10, r10, #0x1c
+	ble	|Rarm_DVBbotdone|
+	tst	r10, #0x10
+	ldmneia	r1!, {r6-r9}
+	stmneia	r0!, {r6-r9}
+	tst	r10, #8
+	ldmneia	r1!, {r7,r8}
+	stmneia	r0!, {r7,r8}
+	tst	r10, #4
+	ldrne	r7, [r1], #4
+	strne	r7, [r0], #4
+|Rarm_DVBbotdone|
+PopAndReturn(r4-r12)
+
+
+
+\define CopyRectTailShift(shift) = {
+	mov	r7, r7, lsl #3
+}
+\define CopyRectTailFill(shift) = {
+	cmp	r7, #(4 - $shift$)
+	ldrgt	r9, [r5], #4
+	orrgt	r8, r8, r9, lsl #(32 - 8*$shift$)
+	mov	r7, r7, lsl #3
+}
+\define CopyRectShiftCore(shift,shfill) = {
+|Varm_CR$shift$aligned|
+	mov	r5, r0
+	mov	r6, r1
+	mov	r10, r2
+	tst	r6, #3
+	beq	|Varm_CR$shift$dalg|
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r10, r10, #1
+	ble	|Varm_CR$shift$next|
+	tst	r6, #3
+	beq	|Varm_CR$shift$dalg|
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r10, r10, #1
+	ble	|Varm_CR$shift$next|
+	tst	r6, #3
+	beq	|Varm_CR$shift$dalg|
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r10, r10, #1
+	ble	|Varm_CR$shift$next|
+|Varm_CR$shift$dalg|
+	bic	r5, r5, #3
+	ldr	r7, [r5], #4
+	mov	r7, r7, lsr #(8*$shift$)
+	subs	r10, r10, #0x10
+	blt	|Varm_CR$shift$small|
+|Varm_CR$shift$big|
+	ldmia	r5!, \{r8,r9,r11,lr\}
+	orr	r7, r7, r8, lsl #(32 - 8*$shift$)
+	mov	r8, r8, lsr #(8*$shift$)
+	orr	r8, r8, r9, lsl #(32 - 8*$shift$)
+	mov	r9, r9, lsr #(8*$shift$)
+	orr	r9, r9, r11, lsl #(32 - 8*$shift$)
+	mov	r11, r11, lsr #(8*$shift$)
+	orr	r11, r11, lr, lsl #(32 - 8*$shift$)
+	stmia	r6!, \{r7-r9,r11\}
+	mov	r7, lr, lsr #(8*$shift$)
+	subs	r10, r10, #0x10
+	bge	|Varm_CR$shift$big|
+|Varm_CR$shift$small|
+	adds	r10, r10, #0x10
+	ble	|Varm_CR$shift$next|
+	tst	r10, #8
+	beq	|Varm_CR$shift$tiny|
+	ldmia	r5!, \{r8, r9\}
+	orr	r7, r7, r8, lsl #(32 - 8*$shift$)
+	mov	r8, r8, lsr #(8*$shift$)
+	orr	r8, r8, r9, lsl #(32 - 8*$shift$)
+	stmia	r6!, \{r7, r8\}
+	mov	r7, r9, lsr #(8*$shift$)
+|Varm_CR$shift$tiny|
+	tst	r10, #4
+	ldrne	r9, [r5], #4
+	orrne	r7, r7, r9, lsl #(32 - 8*$shift$)
+	strne	r7, [r6], #4
+	movne	r7, r9, lsr #(8*$shift$)
+	ands	r10, r10, #3
+	beq	|Varm_CR$shift$next|
+$shfill$($shift$)
+	rsb	lr, r10, #32
+	mov	r7, r7, lsl r10
+	ldr	r9, [r6, #0]
+	mov	r9, r9, lsr lr
+	mov	r9, r9, lsl lr
+	orr	r9, r9, r7, lsr r10
+	str	r9, [r6], #4
+|Varm_CR$shift$next|
+	add	r0, r0, r4
+	add	r1, r1, r12
+	subs	r3, r3, #1
+	bgt	|Varm_CR$shift$aligned|
+PopAndReturn(r4-r12)
+}
+DefineFunction(Varm_CopyRect)
+	stmdb	sp!, {r4-r12,lr}	; r0 *src, r1 *dest, r2 width, r3 height
+	add	r4, sp, #0x28		; stacked: srcadd, destadd
+	ldmia	r4, {r4,r12}		; srcadd, destadd
+	cmp	r2, #0
+	cmpgt	r3, #0
+	ble	|Varm_CRexit|
+	sub	r5, r0, r1
+	and	r5, r5, #3
+	add	pc, pc, r5, lsl #2
+	mov	r0, r0
+	b	|Varm_CR0aligned|
+	b	|Varm_CR1aligned|
+	b	|Varm_CR2aligned|
+	b	|Varm_CR3aligned|
+
+|Varm_CR0aligned|
+	mov	r5, r0
+	mov	r6, r1
+	mov	r7, r2
+	tst	r6, #3
+	beq	|Varm_CR0dalg|		; destination aligned
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r7, r7, #1
+	ble	|Varm_CR0next|
+	tst	r6, #3
+	beq	|Varm_CR0dalg|
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r7, r7, #1
+	ble	|Varm_CR0next|
+	tst	r6, #3
+	beq	|Varm_CR0dalg|
+	ldrb	lr, [r5], #1
+	strb	lr, [r6], #1
+	subs	r7, r7, #1
+	ble	|Varm_CR0next|
+|Varm_CR0dalg|
+	subs	r7, r7, #0x10
+	blt	|Varm_CR0small|
+|Varm_CR0big|
+	ldmia	r5!, {r8-r11}
+	stmia	r6!, {r8-r11}
+	subs	r7, r7, #0x10
+	bge	|Varm_CR0big|
+|Varm_CR0small|
+	adds	r7, r7, #0x10
+	ble	|Varm_CR0next|
+	tst	r7, #8
+	ldmneia	r5!, {r8, r9}
+	stmneia	r6!, {r8, r9}
+	tst	r7, #4
+	ldrne	r8, [r5], #4
+	strne	r8, [r6], #4
+	ands	r7, r7, #3
+	beq	|Varm_CR0next|
+	ldrb	r8, [r5], #1
+	strb	r8, [r6], #1
+	subs	r7, r7, #1
+	ble	|Varm_CR0next|
+	ldrb	r8, [r5], #1
+	strb	r8, [r6], #1
+	subs	r7, r7, #1
+	ble	|Varm_CR0next|
+	ldrb	r8, [r5], #1
+	strb	r8, [r6], #1
+|Varm_CR0next|
+	add	r0, r0, r4
+	add	r1, r1, r12
+	subs	r3, r3, #1
+	bgt	|Varm_CR0aligned|
+|Varm_CRexit|
+PopAndReturn(r4-r12)
+
+CopyRectShiftCore(1, CopyRectTailShift)
+CopyRectShiftCore(2, CopyRectTailFill)
+CopyRectShiftCore(3, CopyRectTailFill)
+
+
+	END

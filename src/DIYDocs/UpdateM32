@@ -1,0 +1,237 @@
+DOOM IT YOURSELF 3.2
+====================
+
+
+
+
+OK, let's forget about minor updates. From now on I'll just replace the entire
+thing. That means more to download for you, but it's definitely easier for me
+and it'll probably also be easier for most of you guys.
+
+
+
+
+NEWS:
+=====
+
+
+All the stuff from minor update 3.1:
+
+1) Fixed map colours in old 8bpp modes.
+
+2) Compressed WADs:
+   ----------------
+   You can compress / uncompress WADs (IWADs, PWADs) using armDeu 1.11 which
+   is also available from today. For more on compressing see the armDeu docs.
+   Doom automatically recognizes compressed WADs. You may mix compressed and
+   uncompressed WADs any way you like, there are no restrictions. Decompression
+   is very fast, typically around 750kB/s output on my A5000 (memory -> memory),
+   so it's quite transparent, although to what degree depends on how fast a
+   harddisc you're using. On a StrongARM with an IDE disc using compressed WADs
+   is probably faster than using uncompressed ones. As far as space goes WADs
+   typically compress down to around 50%. IWADs compress a bit worse, PWADs
+   compress a little better, experiment.
+
+
+
+New in update 3.2
+=================
+
+1) Fixed some more things in old 8bpp modes: fuzz is now correct, as are
+   snapshots. Besides M3.2 will now also emulate palette effects with a static
+   palette, so you get the typical flashes when you pick something up and
+   everything turns red when you're hurt bad. Furthermore I fiddled around
+   with the static palette a little and found a redefinition that looks a
+   little better than the default one, IMHO. You can activate this new
+   static palette by calling !SetMode with the argument ``-newstaticpal''.
+
+2) Modified the engine in such a way that WAD merging is no longer necessary.
+   Yes, dudes, you can play stuff like AliensTC now using PWADs only, and
+   everything including sprites will work just fine. That saves _a lot_ of
+   discspace, of course.
+   Note: if you start using PWADs only there might be trouble with savegames
+   created when using a merged IWAD + PWAD. Some things (most of all flats,
+   i.e. floor/ceiling textures) might get screwed by this. The reason is that
+   some lumpnumbers are stored explicitly in the savegame, and the lumpnumbers
+   of items change when you're using a different system. This is not a bug in
+   the player or anything. Try the same without loading a savegame and everything
+   will look OK. Also, when you change to a new level everything will be fine
+   again, too.
+   Note 2: When you're using armDeu to create a new PWAD get version 1.11.
+   Some rather badly built PWADs (e.g. AliensTC or Mansion) don't work when
+   you're using an older version.
+
+3) Your WADs don't have to be named ``something/wad'' anymore. If you set the
+   filetype to &16c (WAD) the name can be anything you please. Just looks better.
+
+4) New macro FREQUENCY_MULTIPLIER in i_sound.c allows you to do SFX synthesis
+   at more than the standard 11025Hz, using 11025*FREQUENCY_MULTIPLIER Hz
+   instead. This actually has an audible effect (e.g. at 22050Hz the high-
+   pitched background noise accompanying many sounds is gone), but of course
+   will cost you dearly as far as performance is concerned. If you want to
+   go for CD quality sample rate (44.1kHz <==> FREQUENCY_MULTIPLIER = 4)
+   you better have a StrongARM.
+
+5) Bugfixes:
+
+   - Double snapshots when using buffered keyboard.
+   - Broken patches can no longer crash the player (could happen with some
+     old Doom II WADs (v1.6 and the like).
+   - Explicitly disabled escape effects. I hope the escape key now works
+     properly on _all_ RISC OS systems (it should have before too).
+   - Integrated proper sprite, patch and flat merging in the Doom engine
+     thanks to a hint by Darren Salt. That fixes for instance the sprites
+     in AOD (skeletons) and Strain.
+   - Fixed memory error in Z_Zone that manifested when using StarDoom as
+     a PWAD only (it was there otherwise too, just not noticeable).
+   - Fixed bug that caused Invasion2 WAD to crash in levels 3 and 6 (well,
+     actually the bug is in the WAD, of course).
+   - End-Sound properly played out.
+   - General cleanup of the source. Now compiles fine with -pedantic -ansi
+     on gcc and Acorn C
+     
+6) DIYM3.2 COMPILES ON UNIX! Tested using SC4.2 on SUN Ultra, sound using
+   the libaudio interface :-), also HP cc and Linux running gcc. For more see
+   the Unix folder and the UNIX section below.
+
+
+
+
+
+
+Norcroft C:
+===========
+
+As of M3.2 DIY compiles fine with Norcroft C (ignoring warnings). The
+assembler sources don't compile with objasm, though, so you'll still have to
+use as for them; but since as is free and there's no difference in code
+efficiency I really won't bother to change these.
+In order to use Norcroft C you'll have to change some Makefile variables
+like this:
+
+CC	= cc
+CFLAGS	= -Otime -pcc -zc -DNO_UNALIGNED_XS -DUSE_ANSI_LIBS -D__riscos__
+LDFLAGS	= $(NETLINK)
+LIBS	= C:o.stubs
+
+
+
+
+
+UNIX:
+=====
+
+In the directory Unix you can find patches for the versions of i_net.c and
+i_video.c that the original DIY installer stored in the directory linux-c
+as well as a Makefile. If you want to compile DIY on Unix you have to use
+the patched versions of those two files, not the Acorn-versions (use the
+commands ``patch -s -o <outfile> <orig_file> <patch_file>'' to patch the
+original two source files and same as with the original DIY sources, keep
+_unmodified_ versions of the originals around for future updates). You'll
+also have to adapt some paths in the Makefile almost certainly. Currently
+it contains three targets, sun, hp and linux. sun is Sun Solaris with SC4.2,
+using libaudio for sound. hp is HPUX, sound is disabled. Linux is a little
+endian Linux platform (typically X86) with gcc. I tested 32bpp and 16bpp
+modes on little endian Linux machines and they worked OK. However X11 and
+different colour depths is a major headache (design flaws all over the place)
+so... There might be problems if your graphics card can only handle 24bpp
+rather than the 32bpp Doom expects. Rewriting Doom to use 24bpp rather than
+32bpp would be a bit of a headache, not to mention rather inefficient and _I_
+for one won't do it. Get a decent graphics card instead. In case the colours
+are all wrong you'll have to fiddle around with the BUILD_RGB_PIXEL and
+READ_RGB_PIXEL macros in i_video.h. The 16bpp macros I defined for big
+endian machines look _very_ weird, but they worked correctly when I
+displayed the Sun player remote on a Linux machine. If anyone can provide me
+with macros which are correct for all bit depths and machine endiannesses
+I'll include them in later versions.
+Bitmap zooming is supported up to a factor of 3 for all colour depths (i.e.
+-1, -2 and -3). But unless you have a pretty lame machine I suggest you use
+DIY's -resx and -resy switches instead. I found 800*500 _very_ nice and
+playable on my Sun and our Linux PC.
+X11 is very unforgiving as far as differences in colour depths are concerned.
+If you try to run a Doom executable that was compiled for the wrong colour
+depth it'll crash as soon as the title screen should appear. So make sure
+you use the correct player; if you don't know what colour depth your
+machine uses you'll have to try until you find a player the works. On some
+machines the 8bpp player also works in a 32bpp mode (e.g. one of our HPs),
+but not on all (e.g. our Linux PC), so not even the 8bpp player is safe.
+Sorry folks, but X is crap. But what do you expect from a system that came
+up with something as outrageously stupid as the Xpm format...?
+You'll also have to change the naming conventions, because UNIX doesn't
+understand the c, h and o directories. You can do that from the shell like
+this:
+
+echo 'for i in $(ls -1 c); do mv c/$i ${i}.c; done' | ksh
+echo 'for i in $(ls -1 h); do mv h/$i ${i}.h; done' | ksh
+rmdir c h
+
+On Sun, you can choose between 16bit linear and 8bit ulaw sound. If you
+define DOOM_SOUND_ULAW, ulaw is used, otherwise it defaults to 16bit
+linear. If you define DOOM_NO_SFX, sound will be disabled (see hp target).
+I changed the way SNDINTR works (BTW, I recommend defining this in doomdef.h
+for any Unix platform with sound. Currently it's only defined for Sun by
+default). The old approach was severely flawed, this new one works a lot
+better. The macro SOUND_WRITEAHEAD_BUFFERS defines how many sample buffers
+should be prepared in advance. The current value of 3 works very well on my
+Sun Ultra 1, there are no audible buffer overflows. Using too small values
+causes buffer overflows, using too large values leads to a long delay between
+the event and the sound that belongs to it. Unless you hear buffer overflows
+it's best to just leave the value as it is and if you increase it do so in
+moderation.
+
+
+
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 28-Jul-98.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+	"Seems like things just keep getting further out of hand
+	Why can't for once things just go as I plan
+	How dare, how dare you tell me that you understand
+	Let me tell you straight out, there ain't nobody here that can
+	I'm all alone, I'm so alone, to be alone, just leave me alone."
+
+		(Suicidal Tendencies - Alone)

@@ -1,0 +1,736 @@
+Documentation for the GameSupport module (version 0.02)
+=======================================================
+
+
+The GameSupport module was written to provide a safe interface to an asynchronous
+frame buffer, sound fill code etc. for single-tasking applications (you must NOT
+call any of its SWIs from a multitasking environment or really bad things will
+happen). The main idea is to let the module install an exit handler on system
+level; when this exit handler is called, the module automatically removes all
+vectors and thereby avoids serious crashes of the entire computer even when you
+get bad crashes from high-level languages (the dreaded ``No stack for trap handler''
+comes to mind here). It is used in e.g. my RISC OS Doom port DIY from version 4.3.
+
+Note: the keypress handler code was originally written by Darren Salt for the
+DIY Doom port. Since it's vector-based as well I put it into the module too.
+I hope Darren doesn't mind (if you do, let me know).
+
+The GameSupport module uses SWI chunk &55240 (officially registered) and is
+32bit compatible since version 0.02.
+
+
+
+
+GameSupp_FrameBufferInfo				&55240
+========================
+
+On Entry:
+---------
+
+R0	number of frames
+R1	width
+R2	height
+R3	depth (bits per pixel)
+
+On Exit:
+--------
+
+R0	pointer to frame buffer descriptor which resides inside the module
+	This is a data structure with the following layout:
+	0	width
+	4	height
+	8	depth (bit per pixel)
+	12	pitch (size of a scanline in bytes, including padding)
+	16	number of colours (for modes with <= 256 colours)
+	20	number of frames
+	24	horizontal eigen factor
+	28	vertical eigen factor
+	32	number of currently shown frame
+	36	plot bitfield (internal use only)
+	40--	start addresses for each frame
+
+
+Usage:
+------
+
+Call this SWI to check whether the currently used screenmode is compatible with
+the frame buffer type specified and how many buffers can be allocated in the
+available screen memory (the maximum number to try is passed in R0, the actually
+possible number is returned in the frame buffer descriptor at offset 20).
+
+
+
+
+
+GameSupp_ClaimFrameBuffer				&55241
+=========================
+
+On Entry:
+---------
+
+R0	number of frames
+R1	width
+R2	height
+R3	depth (bits per pixel)
+
+On Exit:
+--------
+
+R0	pointer to frame buffer descriptor (see GameSupp_FrameBufferInfo)
+
+
+Usage:
+------
+
+Like GameSupp_FrameBufferInfo, but
+1) tries to extend the screen memory to fit the number of buffers
+2) actually installs the asynchronous frame buffer
+
+An asynchronous frame buffer basically consists of a queue of frames ready
+for display. The user reads the next free frame using GameSupp_GetNextFrame,
+fills that and then enters it in the quere by calling GameSupp_MarkFrameNumber.
+The module installs IRQ code that automatically switches between these frames
+in the queue and marks frames as free that are no longer used. The major
+advantage of an asynchronous frame buffer is that frame changes are always in
+sync with the vsync pulse but it will never block the foreground task unless
+the redraw time for a frame is lower than the vsync time (in that case the
+call to GameSupp_GetNextFrame will return -1). Further details on asynchronous
+frame buffers are beyond the scope of this documentation, however.
+Note that if the module installs an exit handler (GameSupp_InstallExitHandler),
+this frame buffer will be automatically removed when the application exits.
+
+
+
+
+GameSupp_ReleaseFrameBuffer				&55242
+===========================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Deinstalls the frame buffer. Nuff said.
+
+
+
+
+GameSupp_GetFrameBuffer					&55243
+=======================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+R0	pointer to the frame buffer descriptor. See GameSupp_FrameBufferInfo
+
+
+Usage:
+------
+
+Issue this call to get a pointer to the frame buffer within the module. If
+no frame buffer is active, 0 is returned.
+
+
+
+
+GameSupp_GetNextFrame					&55244
+=====================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+R0	number of next free frame (starting from 0), or -1 if none
+
+
+Usage:
+------
+
+When you want to start drawing a new buffer, issue this call until it returns
+a number >= 0. Then read the address of the frame buffer with that number from
+the frame buffer descriptor (see GameSupp_FrameBufferInfo) and fill it. Call
+GameSupp_MarkFrameNumber with this frame number after you're done with the frame.
+
+
+
+
+GameSupp_MarkFrameNumber				&55245
+========================
+
+On Entry:
+---------
+
+R0	number of frame
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Call this SWI after you finished redrawing a frame to add it to the display
+queue.
+
+
+
+
+GameSupp_DisplayFrameBuffer				&55246
+===========================
+
+On Entry:
+---------
+
+R0	number of frame
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Force the display of a specific frame. Shouldn't normally be used, but I had
+some rare special cases in DIY where I needed something like this, so I added
+it to the module as well.
+
+
+
+
+GameSupp_SetFlags					&55247
+=================
+
+On Entry:
+---------
+
+R0	eor mask
+R1	and mask (applied first)
+
+On Exit:
+--------
+
+R0	old flags
+
+
+Usage:
+------
+
+Read or modify flags for fine-tuning the module. At the moment there are no
+flags you should modify, however, so don't call.
+
+
+
+
+GameSupp_SetLogFile					&55248
+===================
+
+On Entry:
+---------
+
+R0	pointer to ctrl-terminated filename or 0
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Specify a file to append log information to or turn off logging if R0 = 0.
+When logging is enabled, the module will log significant changes of the
+handlers with the time they happened in centisecond resolution. If the file
+doesn't exist yet, it will be created. The file will _not_ be kept open --
+this is vital because if serious crashes happen (and this is the case where
+logging is most useful), open files are worthless; instead the file is
+opened, written to and closed every time something happens. I think the
+overhead is definitely worth it.
+
+
+
+
+
+GameSupp_InstallAbortGuard				&55249
+==========================
+
+On Entry:
+---------
+
+R0	flags:
+	bit0	abort handlers try to restore r10/r11 from stack (SCL only!)
+	bit1	use R3, R4 as below
+R1	R10 of the SCL environment
+R2	R11 of the SCL environment
+R3	(if R0 bit1 set) user code to call in case of an abort
+R4	(if R0 bit1 set) value of R0 to call code at R3 with
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Install system-level handlers for Prefetch Abort, Data Abort and Address
+Exception. When either happens, vectors installed by the module are removed
+automatically. If R0 bit0 is set, then the abort handlers check R10/R11 for
+validity in the SCL context and try to restore them from the stack if they're
+illegal. This is convenient if you're using R10/R11 for other purposes inside
+assembler functions (and saved them on the stack before changing them) and
+there's an abort (which would otherwise cause a really ugly crash). Note that
+this works only with applications using the Shared C Library (SCL)!!!
+If R0 bit1 is set, R3 and R4 can be used to call your own function with
+a context pointer when the abort occurs (immediately after returning to
+the previous abort handlers). This code is executed in SVC mode and must
+return without changing the processor mode flags.
+
+
+
+
+GameSupp_RemoveAbortGuard				&5524A
+=========================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Remove the system-level abort handlers.
+
+
+
+
+GameSupp_InstallExitHandler				&5524B
+===========================
+
+On Entry:
+---------
+
+R0	user code to call on exit or 0 if none
+R1	value of R0 to call user code with
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Install a system-level exit handler which automatically cleans up frame
+buffer, sound vectors and dynamic areas when it's called. If you want to
+do some additional housecleaning, use the code pointer and context in
+R0/R1. The code will be called in SVC mode and must return without
+changing processor mode flags.
+
+
+
+
+GameSupp_RemoveExitHandler				&5524C
+==========================
+
+On Entry:
+---------
+
+---
+
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Remove the exit handler.
+
+
+
+
+GameSupp_ClaimSound					&5524D
+===================
+
+On Entry:
+---------
+
+R0	number of channels
+R1	sample length
+R2	sample period
+R3	pointer to fill code
+R4	channel map or 0 for default map
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Issue this call to install a sound vector fill code for 8bit ulaw sound.
+Registers R0-R2 are those needed for Sound_Configure (PRM IV). The fill
+code is called in IRQ mode with registers set up like those in a voice
+handler (see PRM IV); it must return using LDMIA R13!,{PC} (i.e. the
+return address is on the stack).
+The channel map describes which physical channels should be used for
+each (up to 8) logical channel; it is a byte array which specifies the
+physical channel number (starting from 1). If it's 0, the default mapping
+will be used which is 1,2,3,...,<num_channels>.
+
+
+
+
+
+GameSupp_ReleaseSound					&5524E
+=====================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Remove sound fill code (8bit and 16bit);
+
+
+
+
+GameSupp_ClaimSound16					&5524F
+=====================
+
+On Entry:
+---------
+
+R0	frequency
+R1	pointer to fill code
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Issue this call to install a sound vector fill code for 16bit signed linear
+sound (newer hardware only). The fill code is called in SVC mode and must
+return without changing processor mode flags. When the code is called, the
+registers  are set up like those in a linear sound handler (PRM V?), except
+for R0 which is undefined.
+
+
+
+
+GameSupp_ClaimDynamicArea				&55250
+=========================
+
+On Entry:
+---------
+
+R0	maximum size
+R1	memory to leave in free pool
+R2	dynamic area flags
+R3	name (max 31 chars)
+
+On Exit:
+--------
+
+R0	pointer to dynamic area descriptor which resides in the module.
+	This is a data structure with the following layout:
+	0	number of Dynamic Area
+	4	maximum size of Dynamic Area
+	8	start address of memory in Dynamic Area
+	12	flags
+	16	name
+
+
+Usage:
+------
+
+Issue this call to claim a block of memory in a dynamic area with the maximum
+size R0, but leaving at least R1 bytes free. This DA will be destroyed
+automatically if the module installed an exit handler (see
+GameSupp_InstallExitHandler), so you don't have to worry about orphan DAs
+after a bad crash anymore.
+
+
+
+
+GameSupp_GetDynamicArea					&55251
+=======================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+R0	pointer to dynamic area descriptor (see GameSupp_ClaimDynamicArea)
+
+
+Usage:
+------
+
+Use this call to read information about the dynamic area.
+
+
+
+
+GameSupp_ReleaseDynamicArea				&55252
+===========================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Destroy the dynamic area.
+
+
+
+
+
+GameSupp_ClaimKeyPress					&55253
+=======================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Claim keypress handler that stores up/down keypress events which can be
+polled using GameSupp_GetKeyPress.
+
+
+
+
+
+GameSupp_ReleaseKeyPress				&55254
+========================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Remove the keypress handler.
+
+
+
+
+
+GameSupp_FlushKeyPress					&55255
+======================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+Call this SWI to flush the pending keypresses.
+
+
+
+
+
+GameSupp_GetKeyPress					&55256
+====================
+
+On Entry:
+---------
+
+---
+
+On Exit:
+--------
+
+R0	Next key code, -1 if no more key events in queue. Otherwise:
+	If bit 0 is set, the key was pressed, otherwise it was released.
+	bits 1--7 give the internal key code for key events as documented
+	in PRM I-156.
+
+
+Usage:
+------
+
+Poll existing keycodes. Loop until -1 is returned and process the keycodes
+you receive until then.
+
+
+
+
+
+GameSupp_FillMemory16					&55257
+=====================
+
+On Entry:
+---------
+
+R0	pointer to destination
+R1	fill value
+R2	size in bytes
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+This call allows filling memory with 16 bit values (in contrast to memset()
+which always uses bytes).
+
+
+
+
+
+GameSupp_FillMemory32					&55258
+=====================
+
+On Entry:
+---------
+
+R0	pointer to destination
+R1	fill value
+R2	size in bytes
+
+On Exit:
+--------
+
+---
+
+
+Usage:
+------
+
+This call allows filling memory with 32 bit values (in contrast to memset()
+which always uses bytes).
+
+
+
+
+
+
+CLI COMMANDS:
+=============
+
+
+GameSuppOff
+		Removes all vectors
+
+
+GameSuppLog [[-d] <logfile>]
+		Starts logging to <logfile>, or stops logging if no filename
+		is given. If you add the -d switch, the log file will be
+		deleted first rather than just being appended to.
+
+
+
+
+
+
+
+LEGAL STUFF:
+============
+
+The GameSupport module is Freeware. You may use it for your own programs as
+long as this file is included unchanged. I won't be held responsible for any kind
+of damage resulting from the use of this module, use it entirely at your own risk.
+
+
+
+
+
+CONTACT:
+========
+
+Andreas Dehmel
+Homepage:	http://home.t-online.de/~zarquon
+email:		zarquon@t-online.de

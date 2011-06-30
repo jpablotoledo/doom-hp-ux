@@ -1,0 +1,184 @@
+\co Macro package for the GameSupp interface
+\co
+\include "m/sharedass"
+\co
+;*
+;* GameSupp.s
+;*
+;* GameSupport glue code. This module provides safe (against hard crashes)
+;* frame buffer and sound handlers. Generated from macros, do not modify!
+;* (C) 2001 Andreas Dehmel <zarquon@t-online.de>
+;*
+;* This file is part of wimplib. wimplib is released under the Lesser
+;* GNU Public License (LGPL). For more information see the License
+;* provided with the library release.
+
+
+DefineRegisters
+
+
+GameSuppChunk	EQU	0x75240
+
+
+	AREA	|Asm$$Code|, CODE, READONLY
+	ALIGN	4
+
+DefineFunction(GameSupp_FrameBufferInfo)
+	stmdb	sp!,{lr}
+	swi	GameSuppChunk
+	bvs	|GSFBIerror|
+	ldr	r1,[sp,#4]
+	str	r0,[r1,#0]
+	mov	r0,#0
+|GSFBIerror|
+PopAndReturn0
+
+
+DefineFunction(GameSupp_ClaimFrameBuffer)
+	stmdb	sp!,{lr}
+	swi	GameSuppChunk + 1
+	bvs	|GSCFBerror|
+	ldr	r1,[sp,#4]
+	str	r0,[r1,#0]
+	mov	r0,#0
+|GSCFBerror|
+PopAndReturn0
+
+
+DefineFunction(GameSupp_ReleaseFrameBuffer)
+	swi	GameSuppChunk + 2
+ReturnFromLR
+
+
+DefineFunction(GameSupp_GetFrameBuffer)
+	swi	GameSuppChunk + 3
+ReturnFromLR
+
+
+DefineFunction(GameSupp_GetNextFrame)
+	swi	GameSuppChunk + 4
+	mvnvs	r0,#0
+ReturnFromLR
+
+
+DefineFunction(GameSupp_MarkFrameNumber)
+	swi	GameSuppChunk + 5
+ReturnFromLR
+
+
+DefineFunction(GameSupp_DisplayFrameNumber)
+	swi	GameSuppChunk + 6
+ReturnFromLR
+
+
+DefineFunction(GameSupp_SetFlags)
+	swi	GameSuppChunk + 7
+ReturnFromLR
+
+
+DefineFunction(GameSupp_SetLogFile)
+	swi	GameSuppChunk + 8
+ReturnFromLR
+
+
+DefineFunction(GameSupp_InstallAbortGuard)
+	stmdb	sp!,{r4,lr}
+	mov	r4,r2
+	mov	r3,r1
+	mov	r2,r11
+	mov	r1,r10
+	swi	GameSuppChunk + 9
+	movvc	r0,#0
+PopAndReturn(r4)
+
+
+DefineFunction(GameSupp_RemoveAbortGuard)
+	swi	GameSuppChunk + 10
+ReturnFromLR
+
+
+DefineFunction(GameSupp_InstallExitHandler)
+	swi	GameSuppChunk + 11
+	movvc	r0,#0
+ReturnFromLR
+
+
+DefineFunction(GameSupp_RemoveExitHandler)
+	swi	GameSuppChunk + 12
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ClaimSound)
+	str	r4,[sp,#-4]!
+	ldr	r4,[sp,#4]
+	swi	GameSuppChunk + 13
+	movvc	r0,#0
+	ldr	r4,[sp],#4
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ReleaseSound)
+	swi	GameSuppChunk + 14
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ClaimSound16)
+	swi	GameSuppChunk + 15
+	movvc	r0,#0
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ClaimDynamicArea)
+	swi	GameSuppChunk + 16
+	movvc	r0,#0
+ReturnFromLR
+
+
+DefineFunction(GameSupp_GetDynamicArea)
+	swi	GameSuppChunk + 17
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ReleaseDynamicArea)
+	swi	GameSuppChunk + 18
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ClaimKeyPress)
+	swi	GameSuppChunk + 19
+	movvc	r0,#0
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ReleaseKeyPress)
+	swi	GameSuppChunk + 20
+ReturnFromLR
+
+
+DefineFunction(GameSupp_FlushKeyPress)
+	swi	GameSuppChunk + 21
+ReturnFromLR
+
+
+DefineFunction(GameSupp_GetKeyPress)
+	swi	GameSuppChunk + 22
+ReturnFromLR
+
+
+DefineFunction(GameSupp_FillMemory16)
+	swi	GameSuppChunk + 23
+ReturnFromLR
+
+
+DefineFunction(GameSupp_FillMemory32)
+	swi	GameSuppChunk + 24
+ReturnFromLR
+
+
+DefineFunction(GameSupp_ScreenBaseAddress)
+	mov	r2,r0
+	swi	GameSuppChunk + 25
+	str	r1,[r2,#0]
+ReturnFromLR
+
+	END

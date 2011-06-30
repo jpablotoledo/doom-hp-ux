@@ -1,0 +1,253 @@
+WELCOME TO THE THIRD MAJOR UPDATE FOR DOOM IT YOUSELF
+=====================================================
+
+
+
+Delete the files NewDiffs and NewFull in your DoomItYs directory before merging
+it with this update. Also read the UpdateM* files first. This file contains only
+the news since the second major update.
+
+
+
+
+************
+*** NEWS ***
+************
+
+
+- Looking up lump names is now done with binary search (thanks again, Tom).
+  While this doesn't seem to have much of an effect on startup and level loading
+  times it does wonders for the menu stuff (very noticable when typing the name
+  of a savegame).
+
+- Same goes for looking up mobj types. I can't say whether this'll have much
+  of an effect (it generally speeds up spawning), but it can't hurt either.
+
+- You can change the number of colourmaps to use in 16 and 32bpp modes. 16bpp
+  modes can only be changed because I had to test it somehow. I'd strongly
+  discourage you from changing the current value of 32 because 16bpp modes only
+  allow 32 brightness levels per colour component so going higher won't make
+  a difference. You also must NOT under ANY CIRCUMSTANCES change the value of
+  32 in 8bpp modes because that's hard-coded in the WADs.
+  To change the number of colourmaps in 32bpp modes load the file h.r_main into
+  an editor, find the definition of NUMCOLORMAPS and change the one for 32bpp
+  (LD_PIXEL_DEPTH == 5) to the number you wish to use, which must be a power of
+  two. The highest number that can still make a difference is 256, but you really
+  shouldn't use this unless you've got a RiscPC II because all those colourmaps
+  have to be built every time the palette changes. The current default value of
+  128 is probably too big for ARM6 machines, everything else should cope OK. If
+  the slowdown on a palette change is unacceptable to you lower this value.
+
+- Faster code for building colourmaps in 16/32bpp modes (16bpp version takes only
+  64% the time of the old one on an A5000).
+
+- Fade out sound before loading a new level. That cures the noise you sometimes
+  got when the level was loaded over a SFX that was still played at the time.
+  You can set the fadeout-time in seconds using the switch ``-fadeout #'' where
+  # are the seconds to wait for samples to end (default 2). After that time the
+  sound will be faded out over FADE_TICS gametics (1 sec, you can change this in
+  c.i_sound if you have to). 2 secs are perfectly OK for the standard Dooms,
+  but some PWADs (e.g. AOD) play long samples when a level is over and that
+  sample would be truncated if it was played for only 2 secs. The fadeout
+  value is the _maximum_ time to wait before fading out the sample, if the
+  samples end before that the game will go on right away. So usually there's
+  no problem with setting the fadeout value really high (e.g. 100).
+
+- Slightly more efficient status bar plotting. Might be noticable with fast
+  refresh.
+
+- Implemented DeHackEd's infighting-hack. That means that missile-using monsters
+  of the same class will attack each other if they accidentally hit their own
+  kind (e.g. Imp fireballs).
+
+- Three new cheats (typing in the cheat toggles each mode):
+
+  + adhoming: gives the player homing missiles (i.e. rockets, plasma gun and
+    BFG shots home in on the opponent. If you want to have less trouble with
+    Arch Viles, for instance...). This feature can also be enabled from DeHackEd
+    using misc field ``Homing Missiles = 1''. Duration: game.
+
+  + adjump: lets the player jump, using the '0' key. You can change that key
+    by editing doomrc or changing it in c.m_misc. I recommend using the '0'
+    key on the numerical keypad for this. Hold down the speed key (usually shift)
+    to jump a little higher. This feature can also be enabled from DeHackEd using
+    misc field ``Player Jump = 1''. Duration: game.
+
+  + admercury: gives you wings, i.e. you can float around like a cacodemon. If
+    that mode is on it overrides jumping-mode. Float up using the '-key and
+    down using the /-key. If you want to change these keys edit the macros
+    key_floatup and key_floatdown in c.g_game. Combine these keys with the speed
+    key to float a little faster. Duration: level.
+
+  There are two ways you can compile DIYM3: with and without full support of the
+  new features. With full support means you can also use these features in net
+  games or save games while you're floating, wihout means they're only available
+  in single player mode. Full support means incompatible data formats, though,
+  so your old savegames and demos won't work anymore and neither can you play
+  net games with anything but other DIYM3 engines. Bear that in mind; full support
+  is off by default.
+  You can switch on full support by uncommenting the #define FULL_NEW_FEATURES
+  in h.doomdef right at the beginning. In that case the Doom version number will
+  be incremented to 1.11, so you can't crash your machine by loading old (1.10)
+  savegames or demos or trying a net game with an older player. As a general rule
+  I'd recommend full support only for people who're on a small, local network.
+  And even then you should take good care you don't get the 1.11 player(s) and the
+  1.10 player(s) mixed up.
+  General hints: if you're not using full support don't save your game while you're
+  jumping/floating or one of your homing missiles is still flying around. Otherwise
+  what happens after you saved the game and after you reload it will be two different
+  things. If you're playing a net game make sure either everybody activates the homing
+  missile cheat or nobody. If you activate them on your machine the other players
+  automatically get them on your machine as well (although not necessarily on theirs)
+  which is bound to lead to complete and utter confusion. Best of all don't use
+  anything but the jump cheat in net games, because everything else is a bit unfair.
+
+- DeHackEd output redirected into Doom:logfile -- just looks a lot tidier.
+
+- First line on startup gives information about the most important options the
+  player was compiled with (DeHackEd / Depth / Dynamic|Static res).
+
+- New switch ``-fps #'' to calculate the fps every # number of frames. # must be
+  a positive integer and should be at least 5, the default value is 10.
+
+- Optional buffered keyboard input by Darren Salt. For buffered keyboard define
+  BUFFERED_KEYBOARD towards the top of h.ROsupport, otherwise unbuffered keyboard
+  input will be used like in previous versions. The reason this is optional is that
+  personally I consider event buffers rather dangerous in action games; OTOH it is
+  handy for e.g. typing in cheats when screen refresh is slow, so decide for
+  yourself.
+
+- Optional hardware-gamma correction in 16/32bpp modes by Darren Salt. Only use
+  this if you'll run the executable on a RiscPC! To turn it on (it's off by
+  default), uncomment the #define HARDWARE_GAMMA in c.i_video.
+  This might require a different setup for the lighttables. If things are a little
+  too bright in the distance, lower the value assigned to LINEAR_COLOURMAP_LIGHT,
+  also in c.i_video (for a description see UpdateM2).
+
+
+
+
+
+
+
+****************
+*** BUGFIXES ***
+****************
+
+
+- At last the rare redraw-bug in 16bpp is gone. That was a tough one.
+
+- Fixed !SetMode bug in higher colour depths (tried to claim too much memory).
+
+- LinuxDoom Bugs:
+
+  + Fixed end-messages (several bugs here).
+
+  + Fixed screwed-up floor/ceiling textures in some PWADs (Eternal III, AODTC...).
+
+  + Fixed sky textures in (Ultimate) Doom.
+
+- Not really a bug, but the map colours in 16/32bpp are authentic now (including
+  non-black background)
+
+
+
+
+
+
+*************
+*** NOTES ***
+*************
+
+
+- Lots of people seem to be confused about the "V_Init: allocated 1 screen" message.
+  This is _not_ the number of frame buffers, it's the number of back screens Doom
+  uses for things like the textured border and so on. Since M2 DIY uses frame
+  buffers for the screen melting-effect, thus reducing the number of back screens
+  Doom has to claim. If it claims 1 that means you're running with 3 frame buffers,
+  if it claims 2 you have only 2.
+
+- If you're using a StrongARM RiscPC the screen melter might have become slower
+  because frame buffers are uncached and StrongARMs are very slow at accessing
+  uncached memory. In that case you should try one of those tools that make screen
+  memory cacheable when in single tasking mode.
+
+- Fuzz too dark/light in 16/32bpp modes? Load s.arm_plot16/32 in an editor, find the
+  definition of ``fuzz_darken'' and change it (defaults: 16bpp - 4, 32bpp - 32).
+  Increase this value to make it darker, decrease it to make it lighter.
+
+
+
+
+
+
+
+THANKS:
+-------
+
+- Darren Salt (arcsalt@spuddy.mew.co.uk) for the buffered keyboard / hardware gamma
+  correction code.
+
+- Tom Olsson (tolsson@pip.dknet.dk) for some more good hints (WAD lookup and more
+  colourmaps in 32bpp modes, although I'm still a bit sceptical about using 128).
+
+- Stefan Bellon (bellonsn@trick.informatik.uni-stuttgart.de), generic guinea pig ;-).
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 28 May 98.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+
+
+	I sip the blood-red wine
+	My thoughts weigh heavy with the burden of time
+	From knowledge drunk from the fountain of life
+	From Chaos born out of love and the scythe
+	The forest beckons with her nocturnal call
+	To pull me close amid the baying of wolves
+	Where the bindings of Christ are downtrodden with scorn
+	in the dank, oderiferous earth
+
+		Cradle of Filth - The forest whispers my name

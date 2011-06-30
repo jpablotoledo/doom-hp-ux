@@ -1,0 +1,340 @@
+;
+; asm_fastlz.s - decompression code in ARM assembler
+;
+; Written by
+;  Andreas Dehmel <zarquon@t-online.de>
+;
+; This file is part of libfastlz, a small and fast LZ77-based compression
+; library originally developed for WAD compression in Doom. It is released
+; under the GNU Public License (GPL) in the hope that it proves useful.
+; Please note there is NO WARRANTY. For more information read the file
+; License included in this release.
+;
+
+
+
+r0	rn	0
+r1	rn	1
+r2	rn	2
+r3	rn	3
+r4	rn	4
+r5	rn	5
+r6	rn	6
+r7	rn	7
+r8	rn	8
+r9	rn	9
+r10	rn	10
+r11	rn	11
+r12	rn	12
+
+
+
+	idfn	(C) 1998 by Andreas Dehmel
+
+
+
+
+	; fastlz decompression code
+
+; decompression context
+context_alloc	equ	0x00
+context_free	equ	0x04
+context_refill	equ	0x08
+context_buffer	equ	0x0c
+context_bsize	equ	0x10
+; local vars
+local_context	equ	0x00
+local_inbuff	equ	0x04
+local_insize	equ	0x08
+local_current	equ	0x0c
+local_upper	equ	0x10
+local_csize	equ	0x14
+local_slwm	equ	0x18
+local_framep	equ	0x1c
+local_segsize	equ	0x20
+
+
+	AREA	|fastlz_decompress_block$$Code|, CODE, READONLY
+	ALIGN	4
+	IMPORT	|__rt_stkovf_split_big|
+	EXPORT	|fastlz_decompress_block|
+	=	"fastlz_decompress_block"
+	ALIGN	4
+
+|fastlz_decompress_block|
+	mov	r12, sp
+	stmdb	sp!, {r4-r9, r11, r12, lr, pc}	; r0 = ctx, r1 = dest, r2 destSize
+	sub	r11, r12, #4
+	sub	r12, r13, #local_segsize
+	cmp	r12, r10
+	blcc	|__rt_stkovf_split_big|
+	sub	sp, sp, #local_segsize
+	str	r10, [sp, #local_slwm]	; save stack low water mark + frame pointer
+	str	r11, [sp, #local_framep]
+	str	r0, [sp, #local_context]
+	str	r1, [sp, #local_current]
+	add	r3, r1, r2
+	str	r3, [sp, #local_upper]
+	mov	r4, r0
+	ldr	r3, [r4, #context_buffer]
+	cmp	r3, #0
+	strne	r3, [sp, #local_inbuff]
+	bne	|FastLZDecNoAlloc|
+	ldr	r0, [r4, #context_bsize]
+	adr	lr, |FastLZDecRetAlloc|
+	ldr	pc, [r4, #context_alloc]  ; allocate buffer
+|FastLZDecRetAlloc|
+	str	r10, [sp, #local_slwm]    ; sl may have been changed by call
+	cmp	r0, #0
+	mvneq	r0, #0
+	beq	|FastLZDecExit|
+	str	r0, [r4, #context_buffer]
+	str	r0, [sp, #local_inbuff]
+|FastLZDecNoAlloc|
+	ldr	r3, [r4, #context_bsize]
+	str	r3, [sp, #local_insize]
+	mov	r0, r4
+	add	r1, sp, #local_csize
+	mov	r2, #4
+	adr	lr, |FastLZDecReadSize|
+	ldr	pc, [r0, #context_refill]  ; read compressed size
+|FastLZDecReadSize|
+	str	r10, [sp, #local_slwm]     ; sl may have been changed by call
+	cmp	r0, #4
+	mvnne	r0, #0
+	bne	|FastLZDecExit|
+	ldr	r5, [sp, #local_csize]
+	cmp	r5, #0
+	bgt	|FastLZDecDecompressData|   ; compressed or uncompressed block?
+	rsb	r2, r5, #0
+	mov	r0, r4
+	ldr	r1, [sp, #local_current]
+	adr	lr, |FastLZDecReadRaw|
+	ldr	pc, [r0, #context_refill]
+|FastLZDecReadRaw|
+	str	r10, [sp, #local_slwm]     ; sl may have been changed by call
+	adds	r0, r0, r5
+	mvnne	r0, #0
+	b	|FastLZDecExit|
+|FastLZDecDecompressData|
+	ldr	r12, [sp, #local_current]
+	ldr	r11, [sp, #local_upper]
+	mov	r3, #0		; no valid bits in r2
+	bl	|FastLZDecRefill|
+	and	r10, r2, #0x1f	; r10 literal bit length
+	mov	r2, r2, lsr #5
+	and	r9, r2, #0x1f	; r9 reference bit length
+	mov	r2, r2, lsr #5
+	and	r8, r2, #0x1f	; r8 count bit length
+	mov	r2, r2, lsr #5
+	sub	r3, r3, #0x0f	; valid bits in r2
+|FastLZDecLoop|
+	cmp	r12, r11
+	bcs	|FastLZDecDone|
+	cmp	r3, #0
+	bleq	|FastLZDecRefillreg|
+	tst	r2, #1
+	mov	r2, r2, lsr #1
+	sub	r3, r3, #1
+	bne	|FastLZDecRepeat|
+|FastLZDecLiterals|
+	mov	r4, #0		; number
+	mov	r5, #0		; shift
+	mov	r7, #1
+	mov	r7, r7, lsl r10
+	sub	r7, r7, #1	; mask = (1<<len)-1
+|FastLZDecLitnum|
+	mov	r6, r2
+	cmp	r3, r10
+	ble	|FastLZDecLitrefill|
+	add	lr, r10, #1
+	mov	r2, r2, lsr lr
+	sub	r3, r3, lr
+|FastLZDecLitjoin|
+	and	lr, r6, r7
+	orr	r4, r4, lr, lsl r5
+	add	r5, r5, r10
+	mov	r6, r6, lsr r10
+	tst	r6, #1
+	bne	|FastLZDecLitnum|
+|FastLZDecLitcopy|
+	cmp	r3, #8
+	blt	|FastLZDecLitcprefill|
+	cmp	r3, #16
+	blt	|FastLZDecLitcpfull1|
+	cmp	r3, #24
+	blt	|FastLZDecLitcpfull2|
+|FastLZDecLitcpfull3|
+	strb	r2, [r12], #1
+	movs	r2, r2, lsr #8
+	sub	r3, r3, #8
+	subs	r4, r4, #1
+	blt	|FastLZDecLoop|
+|FastLZDecLitcpfull2|
+	strb	r2, [r12], #1
+	movs	r2, r2, lsr #8
+	sub	r3, r3, #8
+	subs	r4, r4, #1
+	blt	|FastLZDecLoop|
+|FastLZDecLitcpfull1|
+	strb	r2, [r12], #1
+	mov	r2, r2, lsr #8
+	sub	r3, r3, #8
+	subs	r4, r4, #1
+	blt	|FastLZDecLoop|
+|FastLZDecLitcprefill|
+	mov	r5, r2
+	bl	|FastLZDecRefillreg|
+	sub	lr, r3, #32
+	orr	r5, r5, r2, lsl lr
+	strb	r5, [r12], #1
+	sub	r3, r3, #8
+	rsb	lr, r3, #32
+	mov	r2, r2, lsr lr
+	subs	r4, r4, #1
+	bge	|FastLZDecLitcpfull3|
+	b	|FastLZDecLoop|
+|FastLZDecLitrefill|
+	bl	|FastLZDecRefillreg|
+	sub	lr, r3, #32	; number of valid bits before refilling
+	orr	r6, r6, r2, lsl lr
+	sub	r3, r3, r10
+	sub	r3, r3, #1
+	rsb	lr, r3, #32
+	mov	r2, r2, lsr lr
+	b	|FastLZDecLitjoin|
+|FastLZDecRepeat|
+	mov	r4, #0		; see literals
+	mov	r5, #0
+	mov	r7, #1
+	mov	r7, r7, lsl r9
+	sub	r7, r7, #1
+|FastLZDecRefnum|
+	mov	r6, r2
+	cmp	r3, r9
+	ble	|FastLZDecRefrefill|
+	add	lr, r9, #1
+	mov	r2, r2, lsr lr
+	sub	r3, r3, lr
+|FastLZDecRefjoin|
+	and	lr, r6, r7
+	orr	r4, r4, lr, lsl r5
+	add	r5, r5, r9
+	mov	r6, r6, lsr r9
+	tst	r6, #1
+	bne	|FastLZDecRefnum|
+	mov	r11, #0
+	mov	r5, #0
+	mov	r7, #1
+	mov	r7, r7, lsl r8
+	sub	r7, r7, #1
+|FastLZDecCountnum|
+	mov	r6, r2
+	cmp	r3, r8
+	ble	|FastLZDecCountrefill|
+	add	lr, r8, #1
+	mov	r2, r2, lsr lr
+	sub	r3, r3, lr
+|FastLZDecCountjoin|
+	and	lr, r6, r7
+	orr	r11, r11, lr, lsl r5
+	add	r5, r5, r8
+	mov	r6, r6, lsr r8
+	tst	r6, #1
+	bne	|FastLZDecCountnum|
+	sub	r4, r12, r4
+	sub	r4, r4, #1
+	subs	r5, r11, #1		; (+MINIMUM_REPEATS - 4)
+	ldr	r11, [sp, #local_upper]	; restore upper output boundary
+	blt	|FastLZDecRepeatsmall|
+|FastLZDecRepeatloop|
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	subs	r5, r5, #4
+	bge	|FastLZDecRepeatloop|
+|FastLZDecRepeatsmall|
+	adds	r5, r5, #4
+	ble	|FastLZDecLoop|
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	subs	r5, r5, #1
+	ble	|FastLZDecLoop|
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	subs	r5, r5, #1
+	ble	|FastLZDecLoop|
+	ldrb	lr, [r4], #1
+	strb	lr, [r12], #1
+	b	|FastLZDecLoop|
+|FastLZDecRefrefill|
+	bl	|FastLZDecRefillreg|
+	sub	lr, r3, #32
+	orr	r6, r6, r2, lsl lr
+	sub	r3, r3, r9
+	sub	r3, r3, #1
+	rsb	lr, r3, #32
+	mov	r2, r2, lsr lr
+	b	|FastLZDecRefjoin|
+|FastLZDecCountrefill|
+	bl	|FastLZDecRefillreg|
+	sub	lr, r3, #32
+	orr	r6, r6, r2, lsl lr
+	sub	r3, r3, r8
+	sub	r3, r3, #1
+	rsb	lr, r3, #32
+	mov	r2, r2, lsr lr
+	b	|FastLZDecCountjoin|
+|FastLZDecDone|
+	mov	r0, #0
+|FastLZDecExit|
+	ldr	r10, [sp, #local_slwm]
+	ldr	r11, [sp, #local_framep]
+	ldmdb	r11, {r4-r9, r11, sp, lr}
+	teq	r0, r0
+	teq	pc, pc
+	moveq	pc, lr
+	movs	pc, lr
+
+|FastLZDecRefillreg|
+	cmp	r0, r1			;local subroutine, does NOT preserve processor flags
+	ldrcc	r2, [r0], #4
+	addcc	r3, r3, #32
+	bcc	|FastLZDecReturn|
+|FastLZDecRefill|
+	ldr	r0, [sp, #local_csize]
+	cmp	r0, #0
+	mvnle	r0, #0
+	ble	|FastLZDecExit|
+	ldr	r1, [sp, #local_insize]
+	cmp	r1, r0
+	movge	r2, r0
+	movlt	r2, r1
+	sub	r0, r0, r2
+	str	r0, [sp, #local_csize]
+	stmdb	sp!, {r3, r10, r11, r12, lr}
+	ldr	r0, [sp, #(local_context+0x14)]
+	ldr	r1, [sp, #(local_inbuff+0x14)]
+	ldr	r10, [sp, #(local_slwm+0x14)]
+	ldr	r11, [sp, #(local_framep+0x14)]
+	adr	lr, |FastLZDecRefilled|
+	ldr	pc, [r0, #context_refill]       ; refill(ctx, inbuff, min(inSize, compSize))
+|FastLZDecRefilled|
+	str	r10, [sp, #(local_slwm+0x14)]   ; sl may have been changed by call
+	ldr	r2, [sp, #(local_inbuff+0x14)]
+	add	r1, r2, r0
+	mov	r0, r2
+	ldr	r2, [r0], #4
+	ldmia	sp!, {r3, r10, r11, r12, lr}
+	add	r3, r3, #32
+|FastLZDecReturn|
+	mov	pc, lr			;no flags
+
+
+
+	END

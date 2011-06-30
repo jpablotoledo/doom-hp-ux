@@ -1,0 +1,130 @@
+DOOM IT YOURSELF 3.3
+====================
+
+
+
+
+For general information on how to update see the previous UpdateM*-files.
+
+
+
+
+NEWS:
+-----
+
+1) Engine does no longer abort when changing to a potentially non-existant
+   level (e.g. levels 33/34 in Doom2).
+
+2) Changed Makefile which makes multiple source-trees for different colour
+   depths superfluous. Now objects for the various colour depths are stored
+   in directories o8, o16, o32 and o32r (see 3).
+   IMPORTANT NOTE: you must no longer use the !RunImage* targets directly
+   under any circumstances. Use ``normal'' for 8bpp, ``high'' for 16bpp,
+   ``true'' for 32bpp and ``resample'' for 32bpp + texture resampling instead.
+   Neither are you allowed to change the definition of LD_PIXEL_DEPTH in
+   h.doomdef any more, leave it alone.
+
+   TROUBLESHOOTING:
+
+   - Some newer versions of *as* don't show the odd behaviour with s_sound
+     any more (older versions write the file o_sound). If you get an error
+     while compiling s_sound, look for the line starting ``$(OBJPATH)s_sound:''
+     and remove the line before and the line after the first following line
+     starting with ``<TAB>$(CC) ...''.
+
+   - Some versions of *make* seem to swap '.' and '/' in some circumstances.
+     In case you get files named o8/doomdef instead of o8.doomdef, like it
+     should be, you have to change the definitions of DOOMFLAGS* (towards the
+     beginning of the file). Change the final period in all occurrences of
+     ``OBJPATH=$(ODIR*).'' to a slash.
+
+
+3) Optional TEXTURE RESAMPLING in 32bpp modes (target ``resample''). This is
+   only recommended for SA RiscPCs, however, since it requires _A LOT_ of
+   processing power. What it does is a bilinear interpolation for textures
+   seen up close which results in smooth colour gradients rather than the
+   usual blocky texels (some stuff looks a bit blurred, though). Things
+   (enemies, items, ...) and transparent textures are plotted using monolinear
+   interpolation which looks a bit odd but is better than nothing; doing
+   bilinear for these too would require very substantial changes to the
+   engine which I'm not prepared to make. I don't intend to do downsampling /
+   mip-mapping either.
+   Resampling isn't available for 16bpp modes. There's absolutely no point
+   in offering it for that depth too: only SA RiscPCs are fast enough to make
+   it worthwhile. Even on these texture resampling is limited by CPU speed
+   more than bus speed so the lower bandwidth requirements in 16bpp modes will
+   not pay off at all. And of course the whole thing wouldn't look anywhere near
+   as smooth in 16bpp.
+   Texture resampling is also available when compiling DIY on Unix. Check out
+   the new Makefile in the Unix directory.
+
+4) Bug-Fixes:
+
+   a) Back screen allocation in higher colour depths. This could lead to bad
+      backgrounds when wiping the screen.
+   b) Varargs: Not really a bug-fix, though. Varargs + the SharedCLib are a
+      problem and at least with my version of SCL I got link errors so I disabled
+      varargs so far. If you now set VARARGSFIX = -DRISCOS_FIX_VARARGS in the
+      Makefile a fix is attempted (file c.i_system) that works OK with my version
+      of the SCL but is known to fail with others. Better not mess with this at
+      all and leave it undefined, I just mentioned it for completeness.
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED and there's no commercial interest. You are not allowed to
+spread modified versions; if you want changes to be included in the official
+release submit them to me.
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+
+
+
+
+
+
+
+Andreas Dehmel, 13-Nov-98.
+
+
+
+
+Contact:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+	Snow is falling down on this glorious land
+	colours fading, turning into white again
+	To fallen heroes angels sing and cry their winter tears
+	endless mourning days will turn to years
+	So this is goodbye, I take leave of you and
+	spread your wings and you will fly away now,
+	fly away now...
+
+	Nothing on earth stays forever
+	but none of your deeds were in vain
+	deep in our hearts you will live again
+	you're gone to the home of the brave
+
+		(Hammerfall, Glory to the Brave)

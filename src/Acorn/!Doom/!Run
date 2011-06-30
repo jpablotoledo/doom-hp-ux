@@ -1,0 +1,74 @@
+| Demonstration !Run file for Doom.
+| Adapt this to your own setup.
+
+| Files:
+|
+| - Configuration file doomrc is read from Doom:doomrc
+| - Demos are stored / read from the directory Doom:Demos
+| - Saved games are stored / read from the directory Doom:Games
+|   unless the variable DoomGames$Path is defined in which case
+|   that directory will be used instead.
+| - WAD files are read from the directory <DOOMWADDIR>
+
+set Doom$Path <Obey$Dir>.
+set DOOMWADDIR <Obey$Dir>.WAD
+set DoomGames$Path <Obey$Dir>.Games.
+
+| Reserve some memory so mallocs after the Z_Zone grabbed its
+| chunk don't fail.
+set DOOMRESERVE 96k
+
+| If you have a ColourCard and the mode(s) in the directory
+| Doom:ColourCard work on your monitor then uncomment the
+| following 2 lines (Mode81 = 320*256*8, Mode82 = 448*336*8,
+| Mode83 = 320*256*16)
+| WARNING: the modes might be harmful to your monitor. Use
+| them entirely on your own risk!
+
+|rmensure Mode81 0.00 RMLoad Doom:ColourCard.Mode81
+|rmensure Mode81 0.00 error Couldn't load mode ColourCard mode!
+
+| Doom tries to use the screen mode you start it in. Therefore
+| you have to switch it on here. If you compiled with static
+| resolutions the mode may have more lines than the SCREENHEIGHT
+| Doom was compiled with, but the width must be an exact match.
+| With dynamic resolutions it uses whatever it finds.
+| If you want to use the ColourCard modes you have to use the
+| first line and comment out the second one. The default setup
+| uses mode 13 which is OK for the default Doom resolution.
+| Now !SetMode handles screen modes on old and new machines.
+| Switches: -mode# (not used on RiscPCs), -frames# (number of
+| frame buffers; can be 2 or 3), -resx#, -resy# (not used on
+| old machines).
+| New switches for !SetMode: -high and -true which are mutually
+| exclusive. Neither switch means 8bpp, -high means 16bpp and
+| -true 32bpp. On exit the variable <Doom$Executable> contains
+| the name of the executable to use. On new machines !SetMode
+| will also set the display mode to the correct depth, on old
+| machines you have to do this via the mode number.
+| If you have an old machine without a graphics card and are
+| thus stuck with a static palette you might wanna try the
+| new switch -newstaticpal which redefines it to look a little
+| better with Doom.
+|run Doom:!SetMode -mode81 -frames3 -resx320 -resy256
+run Doom:!SetMode -mode13 -frames3 -resx320 -resy256
+
+| The GameSupport module provides frame buffer and sound vector
+rmensure GameSupport 0.02 rmload Doom:GameSupp
+rmensure GameSupport 0.02 error "Couldn't load GameSupport module!"
+
+| The SharedCLibrary can auto-extend the wimpslot, so starting up
+| with 1 Meg and getting as much as possible later is OK. If you're
+| using UnixLib, though, you should enter at least 3 Meg here (more
+| if you compiled without DONT_PRECACHE)
+wimpslot -min 1024k
+
+| The moment of truth.
+| Note: all text output after the startup screen has appeared is
+| written into the file Doom:log . In case Doom aborts all of a
+| sudden check this file to get to the bottom of the problem.
+| If you compiled Doom for dynamic resolutions and you want it to
+| run in 320*200 resolution in a 320*256 resolution mode you have to
+| add the switch ``-resy 200''. For running DeHackEd scripts use
+| -dehack <file> or -dehack1 <file>.
+run Doom:<Doom$Executable>

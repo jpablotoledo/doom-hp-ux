@@ -1,0 +1,376 @@
+\co Macro package for the Doom sound system.
+\co
+\include "m/sharedass"
+\co
+; DOOM sound via voice generators.
+; Advantage: allows concurrent other sounds (trackers etc.)
+
+
+DefineRegisters
+
+
+
+; structure for storing variables of the voice handler
+voice_channel_base	EQU	0x00
+voice_other_buffer	EQU	0x04
+voice_channel_map	EQU	0x08
+voice_size		EQU	0x10
+
+
+;	IDFN	(C) 1999 by Andreas Dehmel
+
+
+
+GameSuppChunk	EQU	0x75240
+
+	AREA	|Asm$$Code|, CODE, READONLY
+
+	ALIGN	4
+	IMPORT	|sound_ready|
+	IMPORT	|channels|
+	IMPORT	|LinToLogTable|
+	IMPORT	|ResampleSound|
+	EXPORT	|InstallDoomSound|
+	=	"InstallDoomSound"
+	ALIGN	4
+
+|VoiceVarAdr|
+	DCD	|VoiceVariables|
+
+|InstallDoomSound|			; r0 = number of 1st channel (1-7), 2nd channel is
+	stmdb	sp!, {r4, r12, lr}	; always r0+1. r1 = sample length, r2 = sample period
+	ldr	r12, [pc, #|VoiceVarAdr| - . - 8]
+	str	r0,[r12,#voice_channel_base]
+	strb	r0,[r12,#voice_channel_map]
+	add	r0,r0,#1
+	strb	r0,[r12,#(voice_channel_map+1)]
+	mov	r0, #0
+	str	r0, [r12, #voice_other_buffer]
+	mov	r0,#2
+	adr	r3,|DoomVoiceFill|
+	add	r4,r12,#voice_channel_map
+	swi	GameSuppChunk + 13
+	movvc	r0,#0
+|IDSexit|
+PopAndReturn(r4\, r12)
+
+
+	ALIGN	4
+	EXPORT	|RemoveDoomSound|
+	=	"RemoveDoomSound"
+	ALIGN	4
+
+|RemoveDoomSound|
+	swi	GameSuppChunk + 14
+ReturnFromLR
+
+
+
+	ALIGN	4
+	EXPORT	|InstallDoomSound16|
+	=	"InstallDoomSound16"
+	ALIGN	4
+
+|LinearFillAddr|
+	DCD	|LinearFillCode|
+
+|InstallDoomSound16|			;r0 = frequency
+	ldr	r1,[pc,#|LinearFillAddr| - . - 8]
+	swi	GameSuppChunk + 15
+	movvc	r0,#0
+ReturnFromLR
+
+	
+
+
+; The channel_desc structure. Don't rearrange the order!!!
+channel_desc_samples	EQU	0x00
+channel_desc_remain	EQU	0x04
+channel_desc_leftvol	EQU	0x08
+channel_desc_rightvol	EQU	0x0c
+channel_desc_step	EQU	0x10
+channel_desc_end	EQU	0x14
+channel_desc_size	EQU	0x18
+
+channel_ctrl_lump	EQU	0x00
+channel_ctrl_sampsize	EQU	0x04
+channel_ctrl_offset	EQU	0x08
+channel_ctrl_size	EQU	0x0c
+
+
+\define CheckChannelValidRes = {
+	movs	r2, r9
+}
+\define ReadChannelSampleRes = {
+	ldrb	r10, [r2], #1
+	cmp	r2, r8
+	ldrccb	r2, [r2, #0]
+	subcc	r2, r2, r10
+	movcc	r1, r4, lsr #16
+	mulcc	r2, r1, r2
+	addcc	r10, r10, r2, asr #16
+}
+\define CheckChannelValidNorm = {
+	cmp	r9, #0
+}
+\define ReadChannelSampleNorm = {
+	ldrb	r10, [r9, #0]
+}
+\define ChannelSampleGeneric(next,check,read) = {
+	ldr	r9, [r3], #channel_desc_size	; samples
+$check$
+	beq	|DVFchannel$next$|
+	ldmdb	r3, \{r4-r8\}		; r4 remainder, r5 left, r6 right, r7 step, r8 end
+$read$
+	ldr	r5, [r5, r10, lsl #2]	; leftvol
+	add	r11, r11, r5
+	ldr	r6, [r6, r10, lsl #2]	; rightvol
+	add	r12, r12, r6
+	adds	r10, r4, r7, lsl #16	; use top 16 bits (carry!) and move remainder to r10
+	adc	r9, r9, r7, lsr #16	; carry set means remainder overflowed
+	cmp	r9, r8
+	movcs	r9, #0
+	sub	r5, r3, #(channel_desc_size - channel_desc_samples)
+	stmia	r5, \{r9, r10\}		; store samples, stepremainder
+|DVFchannel$next$|
+}
+\define ChannelSampleCore(next) = {
+ChannelSampleGeneric($next$,CheckChannelValidNorm,ReadChannelSampleNorm)
+}
+\define ChannelResampleCore(next) = {
+ChannelSampleGeneric($next$,CheckChannelValidRes,ReadChannelSampleRes)
+}
+\define ConvertSampleLogarithmic(samp) = {
+	mov	$samp$, $samp$, lsl #0x10
+	ldrb	$samp$, [r1, $samp$, lsr #0x13]
+}
+\define ConvertSampleDummy(samp) = {
+	mov	$samp$, $samp$, lsl #0x10
+}
+\define StoreChannelSampleCore(convert) = {
+	sub	r3, r3, #(8*channel_desc_size)
+	mvn	r10, #0x80000000
+	mov	r9, #0x80000000
+	cmp	r11, r10, lsr #0x10
+	movgt	r11, r10, lsr #0x10
+	cmp	r11, r9, asr #0x10
+	movlt	r11, r9, asr #0x10
+$convert$(r11)
+	cmp	r12, r10, lsr #0x10
+	movgt	r12, r10, lsr #0x10
+	cmp	r12, r9, asr #0x10
+	movlt	r12, r9, asr #0x10
+$convert$(r12)
+}
+
+\define StoreChannelSamples(loop) = {
+StoreChannelSampleCore(ConvertSampleLogarithmic)
+	strb	r12, [r0, r7]
+	strb	r11, [r0], r8
+	cmp	r0, r2
+	bcc	|$loop$|
+}
+
+\define StoreLinearSamples(loop) = {
+StoreChannelSampleCore(ConvertSampleDummy)
+	orr	r11, r11, r12, lsr #0x10
+	str	r11, [r0], #4
+	cmp	r0, r2
+	bcc	|$loop$|
+}
+
+	IMPORT	channel_ctrl
+	IMPORT	lumpcache
+	IMPORT	numlumps
+
+|DVGsready|
+	DCD	sound_ready
+|DVGctrlvars|
+	DCD	channel_ctrl
+	DCD	lumpcache
+	DCD	numlumps
+|DVGimports|				; don't change the order!
+	DCD	LinToLogTable
+|DVGchannels|
+	DCD	channels
+|DVGresample|
+	DCD	ResampleSound
+
+; the problem here is that a lot of efficiency would be wasted if the two voices
+; were synthesized separately. So use a hack that only does the synthesis every
+; second time the voice handler is called and remember the offset into the DMA
+; buffer passed the first time. Tried and tested with 2, 4 and 8 channels.
+; BTW, channel1 is left, channel2 is right.
+|DoomVoiceFill|
+	ldr	r0, [pc, #|DVGsready| - . - 8]
+	ldr	r0, [r0, #0]
+	cmp	r0, #0
+	beq	|DoomVoiceMute|
+	ldr	r9, [pc, #|VoiceVarAdr| - . - 8]
+	ldr	r0, [r9, #voice_other_buffer]
+	cmp	r0, #0
+	streq	r12, [r9, #voice_other_buffer]
+	beq	|DVFexit|
+	adr	r1, |DVGctrlvars|
+	ldmia	r1, {r1-r3}
+	ldr	r2, [r2, #0]
+	ldr	r3, [r3, #0]
+	ldr	r6, [pc, #|DVGchannels| - . - 8]	; find unmapped lumps
+	mov	r4, #8
+|DVFfindunmapped|
+	ldr	r5, [r1, #channel_ctrl_lump]
+	cmp	r5, r3
+	movcs	r5, #0
+	ldrcc	r5, [r2, r5, lsl #2]
+	cmp	r5, #0
+	streq	r5, [r6, #channel_desc_samples]
+	add	r1, r1, #channel_ctrl_size
+	add	r6, r6, #channel_desc_size
+	subs	r4, r4, #1
+	bgt	|DVFfindunmapped|
+	and	r0, r0, #7
+	and	r2, r12, #7		; more secure to use just the offsets modulo 8...
+	bic	r12, r12, #7
+	ldr	r1, [r9, #voice_channel_base]
+	cmp	r7, r1			; r7 is channel-1, i.e. 0...7 rather than 1...8 !
+	subeq	r7, r2, r0		; this is channel 2 (ChannelBase)?
+	addeq	r0, r12, r0
+	subne	r7, r0, r2		; this is channel 1 (ChannelBase-1)?
+	addne	r0, r12, r2
+	mov	r3, #0
+	str	r3, [r9, #voice_other_buffer]
+	adr	r1, |DVGimports|
+	ldmia	r1, {r1, r3, r9}
+	mov	r2, r10
+	ldr	r9, [r9, #0]
+	cmp	r9, #0
+	bne	|DVFresample|
+	stmdb	sp!, {r7, r11}		; channel 2 offset, channel increment
+|DVFmainloop|				; basically the same thing as in ROasm
+	mov	r11, #0			; dl
+	mov	r12, #0			; dr
+|DVFchannel0|				; unrolled 8 times ==> chan no longer needed
+ChannelSampleCore(1)
+ChannelSampleCore(2)
+ChannelSampleCore(3)
+ChannelSampleCore(4)
+ChannelSampleCore(5)
+ChannelSampleCore(6)
+ChannelSampleCore(7)
+ChannelSampleCore(8)
+	ldmia	sp, {r7, r8}
+StoreChannelSamples(DVFmainloop)
+	add	sp, sp, #8
+|DVFexit|
+	mov	r0, #8
+	ldmia	sp!, {pc}
+|DVFresample|
+	stmdb	sp!, {r1, r2, r7, r11}	; l2l, end, offset of 2nd channel, buffer increment
+|DVFmainresloop|
+	mov	r11, #0
+	mov	r12, #0
+|DVFchannelR0|
+ChannelResampleCore(R1)
+ChannelResampleCore(R2)
+ChannelResampleCore(R3)
+ChannelResampleCore(R4)
+ChannelResampleCore(R5)
+ChannelResampleCore(R6)
+ChannelResampleCore(R7)
+ChannelResampleCore(R8)
+	ldmia	sp, {r1, r2, r7, r8}		; l2l, end, channel 2 offset, channel increment
+StoreChannelSamples(DVFmainresloop)
+	add	sp, sp, #16
+	mov	r0, #8
+	ldmia	sp!, {pc}
+
+|DoomVoiceMute|
+	mov	r0, #0
+|DVMloop|
+	strb	r0, [r12], r11
+	cmp	r12, r10
+	bcc	|DVMloop|
+	mov	r0, #8
+	ldmia	sp!, {pc}
+
+
+
+
+
+|LFCctrladdr|
+	DCD	|DVGctrlvars|
+
+|LinearFillCode|
+	ldr	r0, [pc, #|DVGsready| - . - 8]
+	ldr	r0, [r0, #0]
+	cmp	r0, #0
+	moveq	pc, lr
+	stmdb	sp!, {r10-r12, lr}
+	ldr	r0, [pc, #|LFCctrladdr| - . - 8]
+	ldmia	r0, {r3-r5}
+	ldr	r4, [r4, #0]
+	ldr	r5, [r5, #0]
+	ldr	r6, [pc, #|DVGchannels| - . - 8]
+	mov	r7, #8
+|LFCfindunmapped|
+	ldr	r0, [r3, #channel_ctrl_lump]
+	cmp	r0, r5
+	movcs	r0, #0
+	ldrcc	r0, [r4, r0, lsl #2]
+	cmp	r0, #0
+	streq	r0, [r6, #channel_desc_samples]
+	add	r3, r3, #channel_ctrl_size
+	add	r6, r6, #channel_desc_size
+	subs	r7, r7, #1
+	bgt	|LFCfindunmapped|
+	mov	r0, r1
+	ldr	r3, [pc, #|DVGchannels| - . - 8]
+	ldr	r9, [pc, #|DVGresample| - . - 8]
+	ldr	r9, [r9, #0]
+	cmp	r9, #0
+	bne	|LFCresample|
+|LFCmainloop|
+	mov	r11, #0
+	mov	r12, #0
+|LFCchannel0|
+ChannelSampleCore(L1)
+ChannelSampleCore(L2)
+ChannelSampleCore(L3)
+ChannelSampleCore(L4)
+ChannelSampleCore(L5)
+ChannelSampleCore(L6)
+ChannelSampleCore(L7)
+ChannelSampleCore(L8)
+StoreLinearSamples(LFCmainloop)
+|LFCexit|
+	ldmia	sp!, {r10-r12,pc}
+
+|LFCresample|
+	stmdb	sp!, {r2}		; end
+|LFCmainresloop|
+	mov	r11, #0
+	mov	r12, #0
+|LFCchannelR0|
+ChannelResampleCore(LR1)
+ChannelResampleCore(LR2)
+ChannelResampleCore(LR3)
+ChannelResampleCore(LR4)
+ChannelResampleCore(LR5)
+ChannelResampleCore(LR6)
+ChannelResampleCore(LR7)
+ChannelResampleCore(LR8)
+	ldmia	sp, {r2}
+StoreLinearSamples(LFCmainresloop)
+	add	sp, sp, #4
+	ldmia	sp!, {r10-r12, pc}
+
+
+
+	AREA	|Asm$$Data_ROasm|, DATA
+
+|VoiceVariables|
+	%	voice_size
+
+
+
+	END

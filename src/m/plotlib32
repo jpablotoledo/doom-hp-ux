@@ -1,0 +1,771 @@
+\co PLOTTER MACRO LIBRARY FOR 32bpp
+\co
+\co Load shared definitions
+\co
+\include "m/plotterlib"
+\co
+\co
+\co Draw colum pixel fetch and single store
+\co
+\define DrawColumnPlot32 = {
+DrawColumnFetchTrue
+	str	lr, [r4], r0
+}
+\co
+\co Draw column pixel fetch and double store (needs additional r7)
+\co
+\define DrawColumnLowPlot32 = {
+DrawColumnFetchTrue
+	mov	r7, lr
+	stmia	r4, \{r7, lr\}
+	add	r4, r4, r0
+}
+\co
+\co Draw column translated pixel fetch
+\co
+\define DrawColumnTransPlot32 = {
+DrawColumnTransFetchTrue
+	str	lr, [r4], r0
+}
+\co
+\co Draw column translated pixel fetch and could store (needs additional r7)
+\co
+\define DrawColumnLowTransPlot32 = {
+DrawColumnTransFetchTrue
+	mov	r7, lr
+	stmia	r4, \{r7, lr\}
+	add	r4, r4, r0
+}
+\co
+\co Generalized column plotter inner loop, 32bpp
+\co
+\define DrawColumnBody32(prefix,plotproc) = {
+	mov	r0, r0, lsl #2		; 32bpp ==> width*4
+DrawColumnBodyGeneric($prefix$, $plotproc$)
+}
+\co
+\co Standard column plotting for Boom / normal
+\co
+\if defined DIYBOOM
+\define DrawColumnFetchNormal32=DrawColumnFetchBoomTrue
+\define DrawColumnPlotNormal32 = {
+DrawColumnFetchBoomTrue
+	str	lr, [r4], r0
+}
+\define DrawColumnLowPlotNormal32 = {
+DrawColumnFetchBoomTrue
+	mov	r7, lr
+	stmia	r4, \{r7, lr\}
+	add	r4, r4, r0
+}
+\else
+\define DrawColumnFetchNormal32=DrawColumnFetchTrue
+\define DrawColumnPlotNormal32=DrawColumnPlot32
+\define DrawColumnLowPlotNormal32=DrawColumnLowPlot32
+\endif
+\co
+\co Make pixel in lr translucent according to background pixel in pix
+\co
+\define MakePixelTranslucent(pix) = {
+	bic	r9, $pix$, #0xff00
+	bic	r6, lr, #0xff00
+	add	r9, r9, r6
+	mov	r9, r9, lsr #1
+	bic	r9, r9, #0xff00
+	and	$pix$, $pix$, #0xff00
+	and	lr, lr, #0xff00
+	add	$pix$, $pix$, lr
+	bic	$pix$, $pix$, #0x100
+	orr	r9, r9, $pix$, lsr #1
+}
+\co
+\co For RESAMPLING
+\co 
+\if defined DIYRESAMPLE
+\define RGBGetFirstSeq(to, from) = {
+	and	$to$, $from$, #0xff
+}
+\define RGBGetSecondSeq(to, from) = {
+	mov	$from$, $from$, lsr #8
+	and	$to$, $from$, #0xff
+}
+\define RGBGetThirdSeq(to, from) = {
+	mov	$to$, $from$, lsr #8
+}
+\define RGBSetSecondSeq(to, from) = {
+	orr	$to$, $to$, $from$, lsl #8
+}
+\define RGBSetThirdSeq(to, from) = {
+	orr	$to$, $to$, $from$, lsl #16
+}
+\define StoreBilinearPixel = {
+	str	r8, [r6], #4
+}
+\define DrawColumnResampleStore = {
+	str	r7, [r4], r0
+}
+\define DrawColumnResampTransStore = {
+	ldr	lr, [r4]
+MakePixelTranslucent(r7)
+	str	r9, [r4], r0
+}
+\define DrawResampledPrepare = {
+	mov	r0, r0, lsl #2
+}
+\endif
+\co
+\co
+\co
+\co START CREATING ASSEMBLER OUTPUT
+\co
+DefineHeader(32)
+
+
+
+DefineRegisters
+
+
+
+DefineStructs
+
+
+\co Do we want assembler plotters at all?
+\if defined DIYARMASS
+\co
+
+
+\if defined DIYRESAMPLE
+\define DrawSpanStoreRegs = r4-r12
+\define DrawSpanPrologueLoad = DrawSpanResampleLoad
+\else
+\define DrawSpanStoreRegs = r4-r11
+\define DrawSpanPrologueLoad = DrawSpanDefaultLoad
+\endif
+
+DefineFunction(R_DrawSpan)
+	stmdb	sp!, {DrawSpanStoreRegs,lr}
+DrawSpanPrologueGeneric(RDSexit, #2, DrawSpanPrologueLoad)
+\if defined DIYRESAMPLE
+DrawSpanResamplePrologue(RDS)
+|RDSresampleloop|
+ResampleBilinear
+StoreBilinearPixel
+	ldr	r4, [r3, #dctx_ds_colormap]
+	subs	r10, r10, #1
+	bgt	|RDSresampleloop|
+PopAndReturn(DrawSpanStoreRegs)
+|RDSnoresample|
+	mov	r3, r9
+\endif
+	subs	r10, r10, #4
+	blt	|RDSsmall|
+|RDSbigloop|
+DrawSpanFetchTrue(r7)
+DrawSpanFetchTrue(r8)
+DrawSpanFetchTrue(r11)
+DrawSpanFetchTrue(lr)
+	stmia	r6!, {r7,r8,r11, lr}
+	subs	r10, r10, #4
+	bge	|RDSbigloop|
+|RDSsmall|
+	adds	r10, r10, #4
+	ble	|RDSexit|
+	tst	r10, #2
+	beq	|RDStiny|
+DrawSpanFetchTrue(r7)
+DrawSpanFetchTrue(r8)
+	stmia	r6!, {r7, r8}
+|RDStiny|
+	tst	r10, #1
+	beq	|RDSexit|
+DrawSpanFetchTrue(r8)
+	str	r8, [r6], #4
+|RDSexit|
+PopAndReturn(DrawSpanStoreRegs)
+
+
+
+DefineFunction(R_DrawSpanLow)
+	stmdb	sp!, {r4-r11,lr}
+DrawSpanPrologue(RDSLexit, #3)
+	subs	r10, r10, #2
+	blt	|RDSLsmall|
+|RDSLbigloop|
+DrawSpanFetchTrue(r8)
+	mov	r7, r8
+DrawSpanFetchTrue(r11)
+	mov	lr, r11
+	stmia	r6!, {r7,r8,r11,lr}
+	subs	r10, r10, #2
+	bge	|RDSLbigloop|
+|RDSLsmall|
+	adds	r10, r10, #2
+	ble	|RDSLexit|
+	tst	r10, #1
+	beq	|RDSLexit|
+DrawSpanFetchTrue(r8)
+	mov	r7, r8
+	stmia	r6!, {r7, r8}
+|RDSLexit|
+PopAndReturn(r4-r11)
+
+
+\if defined DIYRESAMPLE
+ResampleColumnCode
+
+
+
+ResampleThingColumnCode
+
+
+
+ResampleTranslatedThingColumnCode
+
+
+
+DrawResampledColumnInstantiate(R_DrawResampledColumn, RDRC, DrawColumnResampleStore, DrawResampledPrepare)
+
+
+DrawResampledColumnInstantiate(R_DrawResampledTranslucentColumn, RDRTC, DrawColumnResampTransStore, DrawResampledPrepare)
+
+
+\endif
+
+
+\define DrawColumnCode(fetch,min,max,max2) = {
+DefineFunction(R_DrawColumn)
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnPrologue(RDC, #2, r6)
+	mov	r0, r0, lsl #2
+DrawColumnResampleCore(RDC,$fetch$,DrawColumnResampleStore,$min$,$max$,FixpointUnit)
+DrawColumnBodyGeneric(RDC, DrawColumnPlotNormal32)
+|RDCexit|
+PopAndReturn(r4-$max$)
+
+
+
+DefineFunction(R_DrawColumnLow)
+	stmdb	sp!, \{r4-$max2$,lr\}
+DrawColumnPrologue(RDCL, #3, r6)
+DrawColumnBody32(RDCL, DrawColumnLowPlotNormal32)
+|RDCLexit|
+PopAndReturn(r4-$max2$)
+}
+
+\if defined DIYBOOM
+DrawColumnCode(DrawColumnResampleBoomFetch,r9,r8,r8)
+\else
+DrawColumnCode(DrawColumnResampleFetch,r7,r6,r7)
+\endif
+
+DefineFunction(Rarm_DrawMaskedColumn)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMC, #2)
+	mov	r0, r0, lsl #2
+\if defined DIYRESAMPLE
+DrawColumnResampleGeneric(RDMC, DrawColumnResampleFetch, DrawColumnResampleStore, r8, FixpointUnit)
+	b	|RDMCnocol|
+|RDMCnoresample|
+\endif
+DrawColumnBodyGeneric(RDMCcol_, DrawColumnPlot32)
+DrawMaskedColumnEpilogue(RDMC)
+PopAndReturn(r4-r12)
+
+
+DefineFunction(Rarm_DrawMaskedColumnLow)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMCL, #3)
+DrawColumnBody32(RDMCLcol_, DrawColumnLowPlot32)
+DrawMaskedColumnEpilogue(RDMCL)
+PopAndReturn(r4-r12)
+
+
+\co
+\co
+\define DrawColumnBodyTranslucent(prefix,fetch) = {
+	mov	r0, r0, lsl #2
+|$prefix$pixloop|
+$fetch$
+	ldr	r7, [r4, #0]
+MakePixelTranslucent(r7)
+	str	r9, [r4], r0
+	subs	r10, r10, #1
+	bgt	|$prefix$pixloop|
+}
+\if defined DIYRESAMPLE
+\define DrawColumnBodyResampleTranslucent(prefix,fetch) = {
+	mov	r0, r0, lsl #2
+|$prefix$respixloop|
+	ldr	r12, [r4, #0]
+ResamplePixelTranslucent(r12,RGBGetThirdSeq,$fetch$)
+	str	r7, [r4], r0
+	subs	r10, r10, #1
+	bgt	|$prefix$respixloop|
+}
+\endif
+\define DrawColumnLowBodyTranslucent(prefix,fetch) = {
+	mov	r0, r0, lsl #2
+|$prefix$pixloop|
+$fetch$
+	ldr	r7, [r4, #0]
+MakePixelTranslucent(r7)
+	mov	r7, r9
+	stmia	r4, \{r7, r9\}
+	add	r4, r4, r0
+	subs	r10, r10, #1
+	bgt	|$prefix$pixloop|
+}
+
+\if defined DIYRESAMPLE
+\if defined DIYBOOM
+\define DrawColumnTranslucentResampleWrap(fetch) = {
+	stmdb	sp!, \{r8,r11,r12\}
+DrawColumnBodyResampleTranslucent(RDCT,$fetch$)
+	ldmia	sp!, \{r8,r11,r12\}
+}
+\else
+\define DrawColumnTranslucentResampleWrap(fetch) = {
+	stmdb	sp!, \{r11,r12\}
+DrawColumnBodyResampleTranslucent(RDCT,$fetch$)
+	ldmia	sp!, \{r11,r12\}
+}
+\endif
+\define DrawColumnTranslucentResampleCore(max,fetch) = {
+	movs	lr, r2
+	rsblt	lr, lr, #0
+	cmp	lr, #DrawColumnResampleUnit
+	bge	|RDCTnoresample|
+DrawColumnTranslucentResampleWrap($fetch$)
+PopAndReturn(r4-$max$)
+|RDCTnoresample|
+}
+\else
+\define DrawColumnTranslucentResampleCore(max,fetch) = {
+	; no resampling
+}
+\endif
+
+\define DrawTranslucentColumnCode(max,rfetch) = {
+DefineFunction(R_DrawColumnTranslucent)
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnPrologue(RDCT, #2, r10)
+DrawColumnTranslucentResampleCore($max$,$rfetch$)
+DrawColumnBodyTranslucent(RDCT,DrawColumnFetchNormal32)
+|RDCTexit|
+PopAndReturn(r4-$max$)
+
+
+
+DefineFunction(R_DrawColumnLowTranslucent)
+	stmdb	sp!, \{r4-$max$,lr\}
+DrawColumnPrologue(RDCLT, #3, r10)
+DrawColumnLowBodyTranslucent(RDCLT,DrawColumnFetchNormal32)
+|RDCLTexit|
+PopAndReturn(r4-$max$)
+}
+
+\if defined DIYBOOM
+DrawTranslucentColumnCode(r10,DrawColumnResampleBoomLoadFetch)
+\else
+DrawTranslucentColumnCode(r10,DrawColumnResampleFetch)
+\endif
+
+
+
+DefineFunction(Rarm_DrawMaskedColumnTranslucent)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMCT, #2)
+	mov	r10, r6
+\if defined DIYRESAMPLE
+	movs	lr, r2
+	rsblt	lr, lr, #0
+	cmp	lr, #DrawMaskedColumnUnit
+	bge	|RDMCTnoresample|
+	stmdb	sp!, {r8-r12}
+DrawColumnBodyResampleTranslucent(RDMCT,DrawColumnResampleFetch)
+	ldmia	sp!, {r8-r12}
+	b	|RDMCTnocol|
+|RDMCTnoresample|
+\endif
+	stmdb	sp!, {r8,r9}
+DrawColumnBodyTranslucent(RDMCTcol_,DrawColumnFetchTrue)
+	ldmia	sp!, {r8,r9}
+DrawMaskedColumnEpilogue(RDMCT)
+PopAndReturn(r4-r12)
+
+
+
+DefineFunction(Rarm_DrawMaskedColumnLowTranslucent)
+	stmdb	sp!, {r4-r12,lr}
+DrawMaskedColumnPrologue(RDMCLT, #3)
+	mov	r10, r6
+	stmdb	sp!, {r8,r9}
+DrawColumnLowBodyTranslucent(RDMCLTcol_,DrawColumnFetchTrue)
+	ldmia	sp!, {r8,r9}
+DrawMaskedColumnEpilogue(RDMCLT)
+PopAndReturn(r4-r12)
+
+
+
+\co
+\co Draw column fuzz fetch
+\co
+\define DrawColumnFuzzFetch32 = {
+	ldr	lr, [r4, #0]
+	and	r5, lr, #0xff
+	subs	r5, r5, #fuzz_darken
+	movlt	r5, #0
+	and	r1, lr, #0xff00
+	subs	r1, r1, #(fuzz_darken << 8)
+	orrgt	r5, r5, r1
+	and	r1, lr, #0xff0000
+	subs	r1, r1, #(fuzz_darken << 16)
+	orrgt	r5, r5, r1
+}
+\define DrawColumnFuzzPlot32 = {
+DrawColumnFuzzFetch32
+	str	r5, [r4], r0
+}
+\define DrawColumnLowFuzzPlot32 = {
+DrawColumnFuzzFetch32
+	mov	r1, r5
+	stmia	r4, \{r1, r5\}
+	add	r4, r4, r0
+}
+
+
+fuzz_darken	EQU	0x20
+
+DefineFunction(R_DrawFuzzColumn)
+	stmdb	sp!, {r4-r6,lr}
+DrawColumnFuzzPrologue(RDFCexit)
+	mov	r0, r0, lsl #2
+	cmp	r2, #0
+	bne	|RDFCLow|
+DrawColumnBodyGeneric(RDFC_, DrawColumnFuzzPlot32)
+PopAndReturn(r4-r6)
+|RDFCLow|
+DrawColumnBodyGeneric(RDFClow_, DrawColumnLowFuzzPlot32)
+|RDFCexit|
+PopAndReturn(r4-r6)
+
+
+
+DefineFunction(R_DrawTranslatedColumn)
+	stmdb	sp!, {r4-r8,lr}
+	ldr	r8, [r0, #dctx_dc_translation]
+DrawColumnGenericPrologue(RDTC, #2, DrawColumnTranslateLookup,DrawColumnStandardSource,DrawColumnTextureStdPrologue,r6)
+	mov	r0, r0, lsl #2
+	cmp	r7, #0
+	bne	|RDTCLow|
+\if defined DIYRESAMPLE
+DrawColumnResampleCore(RDTC,DrawColumnTransResampleFetch,DrawColumnResampleStore,r9,r8,FixpointUnit)
+\endif
+DrawColumnBodyGeneric(RDTC, DrawColumnTransPlot32)
+PopAndReturn(r4-r8)
+|RDTCLow|
+DrawColumnBodyGeneric(RDTCL, DrawColumnLowTransPlot32)
+|RDTCexit|
+PopAndReturn(r4-r8)
+
+
+
+DefineFunction(Varm_CopyRect)
+	stmdb	sp!, {r4-r12,lr}	; r0 *src, r1 *dest, r2 width, r3 height
+	add	r4, sp, #0x28		; stacked: srcadd, destadd
+	ldmia	r4, {r4,r12}		; srcadd, destadd
+	movs	r2, r2, lsl #2		; width *= 4 (number of bytes = 4*number of longs)
+	cmpgt	r3, #0
+	ble	|Varm_CRexit|
+|Varm_CRaligned0|
+	mov	r5, r0
+	mov	r6, r1
+	mov	r10, r2
+	subs	r10, r10, #0x20
+	blt	|Varm_CR0small|
+|Varm_CR0big|
+	ldmia	r5!, {r7-r9,r11}
+	stmia	r6!, {r7-r9,r11}
+	ldmia	r5!, {r7-r9,r11}
+	stmia	r6!, {r7-r9,r11}
+	subs	r10, r10, #0x20
+	bge	|Varm_CR0big|
+|Varm_CR0small|
+	adds	r10, r10, #0x20
+	ble	|Varm_CR0next|
+	tst	r10, #0x10
+	ldmneia	r5!, {r7-r9,r11}
+	stmneia	r6!, {r7-r9,r11}
+	tst	r10, #8
+	ldmneia	r5!, {r8, r9}
+	stmneia	r6!, {r8, r9}
+	tst	r10, #4
+	ldrne	r8, [r5], #4
+	strne	r8, [r6], #4
+|Varm_CR0next|
+	add	r0, r0, r4, lsl #2
+	add	r1, r1, r12, lsl #2
+	subs	r3, r3, #1
+	bgt	|Varm_CRaligned0|
+|Varm_CRexit|
+PopAndReturn(r4-r12)
+
+
+
+\define DrawPatchPlot32 = {
+	ldrb	lr, [r8], #1
+	ldr	lr, [r4, lr, lsl #2]
+	str	lr, [r9], r10
+	subs	r11, r11, #1
+	ble	|Varm_DPnextstrip|
+}
+\define DrawPatchBlock32(shift,shcmd) = {
+	and	lr, r12, #(0xff << $shift$)
+	ldr	lr, [r4, lr, $shcmd$]
+	str	lr, [r9], r10
+}
+
+DefineFunction(Varm_DrawPatch)
+DrawPatchPrologue(2)
+	mov	r10, r10, lsl #2	; it's 32bpp!
+DrawPatchOuterPrologue(Varm_DP)
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot32
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot32
+	tst	r8, #3
+	beq	|Varm_DPaligned|
+DrawPatchPlot32
+|Varm_DPaligned|
+	subs	r11, r11, #4
+	blt	|Varm_DPsmallstrip|
+|Varm_DPbigstrip|
+	ldr	r12, [r8], #4
+DrawPatchBlock32(0, lsl#2)
+DrawPatchBlock32(8, lsr#6)
+DrawPatchBlock32(16, lsr#14)
+DrawPatchBlock32(24, lsr#22)
+	subs	r11, r11, #4
+	bge	|Varm_DPbigstrip|
+|Varm_DPsmallstrip|
+	adds	r11, r11, #4
+	ble	|Varm_DPnextstrip|
+	ldr	r12, [r8], #4
+DrawPatchBlock32(0, lsl#2)
+	subs	r11, r11, #1
+	ble	|Varm_DPnextstrip|
+DrawPatchBlock32(8, lsr#6)
+	subs	r11, r11, #1
+	ble	|Varm_DPnextstrip|
+DrawPatchBlock32(16, lsr#14)
+|Varm_DPnextstrip|
+	ldrb	r12, [r7, #column_length]
+DrawPatchOuterEpilogue(Varm_DP, 2)
+\co
+\co
+\co
+\endif
+\co
+\co
+\define TransCmapTrans(to) = {
+	ldrb	r5, [r2], #1
+	add	r5, r5, r5, lsl #1
+	ldrb	$to$, [r5, r1]!
+	ldrb	$to$, [r6, $to$]
+	ldrb	lr, [r5, #1]
+	ldrb	lr, [r6, lr]
+	orr	$to$, $to$, lr, lsl #0x08
+	ldrb	lr, [r5, #2]
+	ldrb	lr, [r6, lr]
+	orr	$to$, $to$, lr, lsl #0x10
+}
+
+DefineFunction(TranslateColourmaps32)
+	stmdb	sp!, {r4-r12,lr}
+	ldr	r9, [r0, #dctx_num_cmaps]
+	ldr	r3, [r0, #dctx_lightmult]
+	ldr	r12, [r0, #dctx_trans_colmaps]
+|TransMapLoop|
+	ldr	r6, [r3], #4	; get multiplicator
+	mov	r10, #0x100
+	mov	r5, #0x8000	; accu (!= 0 because of rounding)
+	ldr	r8, [r0, #dctx_trans_cmap_work]
+|TransTableLoop|		; build lookup table [256]
+	mov	r7, r5, lsr #0x10
+	add	r5, r5, r6
+	mov	lr, r5, lsr #0x10
+	orr	r7, r7, lr, lsl #0x08
+	add	r5, r5, r6
+	mov	lr, r5, lsr #0x10
+	orr	r7, r7, lr, lsl #0x10
+	add	r5, r5, r6
+	mov	lr, r5, lsr #0x10
+	orr	r7, r7, lr, lsl #0x18
+	add	r5, r5, r6
+	str	r7, [r8], #4
+	subs	r10, r10, #4
+	bgt	|TransTableLoop|
+	mov	r10, #0x100
+	sub	r6, r8, #0x100
+|TransEntryLoop|
+TransCmapTrans(r4)
+TransCmapTrans(r7)
+TransCmapTrans(r8)
+TransCmapTrans(r11)
+	stmia	r12!, {r4, r7, r8, r11}
+	subs	r10, r10, #4
+	bgt	|TransEntryLoop|
+	sub	r2, r2, #0x100	; restore colourmap pointer
+	subs	r9, r9, #1
+	bgt	|TransMapLoop|
+	ldr	r4, [r12, #0]	; translated_colourmaps[NUMCOLORMAPS*256] == -1? (inverse map)
+	cmn	r4, #1
+	bne	|TransCmapExit|
+	mov	r4, #0x100
+	add	r2, r2, #(0x20*0x100)
+|TransInverseLoop|
+	ldrb	r5, [r2], #1
+	add	r5, r5, r5, lsl #1
+	ldrb	r6, [r5, r1]!
+	ldrb	r7, [r5, #1]
+	orr	r6, r6, r7, lsl #8
+	ldrb	r7, [r5, #2]
+	orr	r6, r6, r7, lsl #16
+	str	r6, [r12], #4
+	subs	r4, r4, #1
+	bgt	|TransInverseLoop|
+|TransCmapExit|
+PopAndReturn(r4-r12)
+
+
+
+\define TransCmapBase(to) = {
+	ldrb	r4, [r2], #1
+	add	r4, r4, r4, lsl #1
+	ldrb	$to$, [r4, r0]!
+	ldrb	lr, [r4, #1]
+	orr	$to$, $to$, lr, lsl #8
+	ldrb	lr, [r4, #2]
+	orr	$to$, $to$, lr, lsl #16
+}
+
+DefineFunction(I_TranslateBaseMap)
+	stmdb	sp!, {r4-r8,lr}
+	mov	r3, #0x100
+|ITBMloop|
+TransCmapBase(r5)
+TransCmapBase(r6)
+TransCmapBase(r7)
+TransCmapBase(r8)
+	stmia	r1!, {r5-r8}
+	subs	r3, r3, #4
+	bgt	|ITBMloop|
+PopAndReturn(r4-r8)
+
+
+
+DefineFunction(Rarm_DrawViewBorder)
+	stmdb	sp!, {r4-r12,lr}	; will be overwritten later on anyway.
+	add	r4, sp, #0x28
+	ldmia	r4, {r4, r5}
+	mov	r4, r4, lsl #2		; 32bpp ==> width*4
+	mov	r3, r3, lsl #2		; 32bpp ==> side*4
+	mul	r6, r2, r4		; top * SCREENWIDTH
+	add	r6, r6, r3		; + side
+	subs	r10, r6, #0x1c
+	blt	|Rarm_DVBsmalltop|
+|Rarm_DVBbigtop|
+	ldmia	r1!, {r6-r9,r11,r12,lr}
+	stmia	r0!, {r6-r9,r11,r12,lr}
+	subs	r10, r10, #0x1c
+	bge	|Rarm_DVBbigtop|
+|Rarm_DVBsmalltop|
+	adds	r10, r10, #0x1c
+	ble	|Rarm_DVBtopdone|
+	tst	r10, #0x10
+	ldmneia	r1!, {r6-r9}
+	stmneia	r0!, {r6-r9}
+	tst	r10, #8
+	ldmneia	r1!, {r7,r8}
+	stmneia	r0!, {r7,r8}
+	tst	r10, #4
+	ldrne	r7, [r1], #4
+	strne	r7, [r0], #4
+|Rarm_DVBtopdone|
+	sub	r6, r5, #1		; viewheight - 1
+	sub	r7, r4, r3, lsl #1
+	add	r0, r0, r7
+	add	r1, r1, r7
+|Rarm_DVBlineloop|
+	mov	r8, r3, lsl #1
+	subs	r10, r8, #0x10
+	blt	|Rarm_DVBsmallside|
+|Rarm_DVBbigside|
+	ldmia	r1!, {r8,r9,r11,r12}
+	stmia	r0!, {r8,r9,r11,r12}
+	subs	r10, r10, #0x10
+	bge	|Rarm_DVBbigside|
+|Rarm_DVBsmallside|
+	adds	r10, r10, #0x10
+	ble	|Rarm_DVBsidedone|
+	tst	r10, #8
+	ldmneia	r1!, {r8,r9}
+	stmneia	r0!, {r8,r9}
+	tst	r10, #4
+	ldrne	r9, [r1], #4
+	strne	r9, [r0], #4
+|Rarm_DVBsidedone|
+	add	r0, r0, r7
+	add	r1, r1, r7
+	subs	r6, r6, #1
+	bgt	|Rarm_DVBlineloop|
+	mul	r6, r2, r4		; copy bottom -- see above
+	add	r6, r6, r3
+	subs	r10, r6, #0x1c
+	blt	|Rarm_DVBsmallbot|
+|Rarm_DVBbigbot|
+	ldmia	r1!, {r6-r9,r11,r12,lr}
+	stmia	r0!, {r6-r9,r11,r12,lr}
+	subs	r10, r10, #0x1c
+	bge	|Rarm_DVBbigbot|
+|Rarm_DVBsmallbot|
+	adds	r10, r10, #0x1c
+	ble	|Rarm_DVBbotdone|
+	tst	r10, #0x10
+	ldmneia	r1!, {r6-r9}
+	stmneia	r0!, {r6-r9}
+	tst	r10, #8
+	ldmneia	r1!, {r7,r8}
+	stmneia	r0!, {r7,r8}
+	tst	r10, #4
+	ldrne	r7, [r1], #4
+	strne	r7, [r0], #4
+|Rarm_DVBbotdone|
+PopAndReturn(r4-r12)
+
+
+
+
+DefineFunction(InstallGamma)
+	SUB	sp,sp,#8
+	MOV	r3,r0
+	MOV	r2,#0
+gamma	LDRB	r1,[r3],#1
+	ORR	r0,r2,#16<<8
+	ORR	r0,r0,r1,LSL #16
+	ORR	r0,r0,r1,LSL #24
+	STMIA	sp,{r0,r1}
+	MOV	r0,#12
+	MOV	r1,sp
+	SWI	7 ; OS_Word
+	ADD	r2,r2,#1
+	TEQ	r2,#256
+	BNE	gamma
+	ADD	sp,sp,#8
+ReturnFromLR
+
+
+
+	END

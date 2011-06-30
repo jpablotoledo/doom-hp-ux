@@ -1,0 +1,381 @@
+			      DOOM IT YOURSELF
+			      ================
+
+
+
+(aka "is that a chaingun in your pocket or are you just happy to see me?")
+
+
+
+
+			Written in hours of darkness
+			   February -- March 1998
+
+
+
+
+
+WHAT IS IT?
+-----------
+
+"Doom It Yourself" is a patch for ID's publicly available LinuxDoom 1.10
+sources. It makes it possible to compile Doom out of the box on GCC 2.7.2
+using either UnixLib or the Shared C Library. The SharedCLib approach is
+strongly encouraged; you can download the headers and stubs for GCC from
+
+	http://guest.btinternet.com/~nick.burrett/home.htm
+
+
+
+
+FEATURES:
+---------
+
+It's not just a dumb port, there are some very nice specials:
+
+- Should run on any RISC OS machine with at least 8MB RAM, also pre-RiscPC.
+
+- Allows using ColourCard modes on old style machines to get a fully
+  programmable 256 colour palette (works great on my A5000).
+
+- Wall & Floor/Ceiling-plotters as well as some other graphics routines have
+  been rewritten in ARM assembler, speeding up things enormously.
+
+- 8 channel stereo sound synthesis done in assembler using the channel
+  handler's callback interface, thus no buffer overflows. Currently only
+  8bit mu-law, though.
+
+- Source is resolution-independent. You can compile it for any resolution
+  (I did 448*336 as a test and it looks great), in contrast to the original
+  sources which couldn't handle anything but 320*200. Of course all the
+  static screens (intermission, title) look a bit odd 'cause they're fixed
+  to 320*200, but the actual game runs fine in higher resolutions and that's
+  the main issue.
+
+
+
+
+
+REQUIREMENTS:
+-------------
+
+Here's a list of what you need to compile Doom It Yourself:
+
+- Linuxdoom 1.10 sources from
+  ftp.idsoftware.com/idstuff/source/doomsrc.zip
+  Try around 7-9am CET if you want to get anywhere.
+
+- GCC 2.7.2. installation (which includes as). If you haven't got one
+  already you should get _that_ working first. Don't bother me with
+  questions about that, though.
+
+- make utility, e.g.
+  ftp.uni-stuttgart.de/pub/systems/acorn/riscos/unixtools/gnu/make.absolute
+
+- patch utility, e.g.
+  ftp.uni-stuttgart.de/pub/systems/acorn/riscos/unixtools/patch.absolute
+
+- Don't need it but it's highly recommended: the SharedCLib headers and stubs
+  for GCC:
+  http://guest.btinternet.com/~nick.burrett/home.htm
+
+- A program like SparkFS that can read ZIP archives like any other RISC OS
+  directory for the installer.
+
+
+
+
+
+INSTALLATION:
+-------------
+
+You must have patch on your run-path. If you're really desperate you can
+always copy it inside the DoomItYs directory, but that's not a very good
+solution.
+DO NOT RUN THE INSTALLATION FROM THE ARCHIVE! Uncompress it on your
+harddisc first, because there will be a number of temporary files created
+within the directory.
+
+Everything ready? SparkFS loaded? A Directory to hold the Doom sources
+created? Then open a TaskWindow (or press F12 if you must), set your CSD
+inside the uncompressed DoomItYs directory and type
+
+	*!Patch
+
+What this will do is first get the source and destination pathnames.
+Enter these and confirm your choice to start the main installation which
+will
+
+1) read the sources in the linuxdoom ZIP archive, replace all C++-style
+   comments with C-style ones and write them to the destination directory
+   you specified in RISC OS format (i.e directories c and h containing
+   the sources). If for some reason you can't use that part of the script
+   (no SparkFS?) you're in trouble. If you have a filing system that
+   allows more than 77 entries per directory you could uncompress the
+   doom-ZIP archive there and use the installer on that directory. If
+   even that fails you have to skip that stage entirely and install
+   everything by hand. You have to replace the commentaries and so forth
+   by running asc2pcl (in the DoomItYs folder) over every file using
+   the command (from the DoomItYs directory or you have to enter the full
+   pathname of rep_comm)
+
+	asc2pcl.asc2pcl -o1 -h rep_comm -c 2000 <src-file> <dest-file>
+
+   If you install right out of the archive this really doesn't concern
+   you and all you have to do after typing !Patch is make yourself some
+   coffee.
+
+2) Patch these sources to make them compile on RISC OS. It uses patch
+   for this so the program has to be on your Run-Path. Patch in turn
+   creates a Bak directory for temporary files in your CSD, so in case
+   you're wondering where that came from...
+   If you had to skip part 1) comment out all references to !TransPkg
+   in !Patch and then run it.
+
+
+
+
+
+COMPILATION:
+------------
+
+Essentially all you have to do now is set your CSD to the Doom directory
+and type
+
+	make -r
+
+but you should read this first:
+
+The Makefile thinks you're using the SharedCLib. There are various ways
+to handle this, mine is to just change Unix$Path to point to the directory
+containing the CLib headers and stubs rather than the UnixLib directory.
+This is what the Makefile assumes. The alternative is to add
+"-mstubs -I<Clib-dir>" to CFLAGS. Decide for yourself which approach to use.
+
+If you're using UnixLib you have to remove the -mstubs from the Makefile.
+Apart from that everything should run OK. In the code UnixLib is recognised
+by the presence of the macro __UNIXLIB_TYPES_H (this concerns c.i_video
+and c.i_main). Filename translation is switched off in c.i_main.
+
+
+Preprocessor-Makros:
+--------------------
+
+The following preprocessor-macros have to be defined:
+
+__riscos__		(general RISC OS issues, automatically set by GCC)
+NO_UNALIGNED_XS		(fix alignment in WAD reading code)
+USE_ANSI_LIBS		(...instead of UnixLib functions that do the same thing).
+
+
+There are various other macros of importance:
+
+h.doomdef:
+	RANGECHECK		tests coordinates before plotting stuff
+	RANGECHECK_ABORTS	this is new. Formerly Doom aborted if
+				RANGECHECK was defined and violated. Now
+				it only aborts if this is also defined.
+	SCREENWIDTH, SCREENHEIGHT	should be obvious.
+
+c.i_video:
+	ESCAPE_ABORTS_DOOM	if defined pressing escape immediately aborts
+				doom (good during development). Otherwise
+				escape always brings up the menu.
+
+
+Notes:
+------
+
+- The number of sound channels is fixed to 8 in the assembler source. So don't
+  change that value in the sound code. Going higher isn't dangerous, going
+  lower is suicide. If you want to _use_ less channels edit the doomrc file.
+
+- The assembler plotters are completely resolution-independent. They import
+  everything from the other object files, so don't worry if you change the
+  resolution.
+
+- I modified the sources to allow to -file even with the Shareware WAD.
+  I also hacked it so you can use the StarWars WAD from the Shareware
+  version (see c.r_data:R_TextureNumForName). You can use a similar system
+  to make other WADs work. The important thing is only to remap names if
+  the real name failed, Otherwise things are still a hack if you have the
+  commercial WAD and besides it'd slow everything down dramatically.
+
+- There is a bug in my version of as: as -gcc -o o.s_sound s.s_sound
+  doesn't produce o.s_sound but o.o_sound. The makefile takes care of
+  that but if your version of as doesn't have that bug it'll throw an
+  error. In that case just change that back.
+
+- For some reason Doom seems to take longer to start up when linked against
+  UnixLib. Weird.
+
+
+Adapt all this to your needs and then compile Doom. This takes about half
+an hour in my A5000, IIRC. If you have a fast machine (say ARM7 or better)
+I'd go for 448*336 resolution right away.
+
+
+
+
+
+
+
+RUNNING:
+--------
+
+Once the compilation produced the required !RunImage file copy this into
+the !Doom folder in the DoomItYs directory. Read the !Doom.!Run file for
+more info on how to set up things.
+Filename conversions are switched off in case you're using UnixLib.
+Otherwise they were never an option anyway.
+
+If Doom aborts after the startup screen has appeared you can check the
+file Doom:log for hints why it did.
+
+Note that, as also pointed out in the !Run file, Doom tries to use the
+mode it's started in as the play mode. So you have to switch that mode
+on in the !Run file before calling the !RunImage. The mode must be
+exactly as wide as the SCREENWIDTH value Doom was compiled with and
+at least (!) as high as the SCREENHEIGHT value (so mode 13 is OK when
+Doom was compiled for 320*200). Also the screensize has to be big enough
+for 2 screenbuffers, but 3 are better (Doom tries to get 3).
+
+This version of Doom also runs in modes without 256 palette entries (i.e.
+pre-RiscPC 8bpp). However palette effects (flashes & co) are not emulated
+because it'd be extremely expensive to load the colourmaps from the WAD,
+find the best colournumber matches for 256 RGB values and translate 8kB
+of colourmaps each time the palette changes. ATM this translation is only
+done when the gamma values change. The changes to the code (c.i_video) to
+do a full palette emulation would be relatively small but, well, very slow,
+so don't do it. Buy a ColourCard instead, it looks much better that way too.
+
+If you design your own ColourCard modes with the CCModeDes you have to
+be aware of a little ``bug'': the 8bpp modes created thus are identified
+as non-256 palette entry modes. Load the mode into Zap and look around
+offset &e8: there's the sequence 00000003 0000003f. Change the second word
+to 000000ff to mark it as having 256 palette entries. Then Doom will also
+work correctly with the mode (otherwise it will revert to palette emulation).
+
+
+
+
+
+
+TROUBLESHOOTING:
+----------------
+
+Sometimes Doom aborts with a memory error on startup. The reason for this
+is that first Doom's memory manager (z_zone) claims as big a block of
+memory as possible (going down from 12MB to 6MB in 1MB steps, below that
+in 512kB steps). But afterwards some small mallocs are still issued which
+might fail if the z_zone got almost all the memory. The solution is to free
+or allocate a little extra memory before startup (like in/decreasing the
+font cache a little) and trying again.
+
+
+
+
+
+
+TO DO:
+------
+
+- Currently there's no net support. Somebody else has to take care of that.
+  Changes go into c.i_net.
+
+- This version doesn't compile on Acorn C. The changes involved should be
+  relatively small, so somebody have a go.
+
+- Well... nothing important, really. Maybe 16 bit sound but then @ 6kHz I
+  don't think it makes that much of a difference. Also I don't see the point
+  in going 24 bit graphics when all the WADs and so forth are 8 bit anyway.
+
+
+
+
+
+
+
+CONTRIBUTIONS:
+--------------
+
+Submit contributions to me. I'll decide whether I'll include them.
+
+Some general guidelines:
+
+- The code should compile as easily as possible on a number of different
+  compilers. There's no chance I'll include changes that don't compile
+  on GCC.
+
+- Library use should be minimised. After all with the SWI interface it's
+  no big deal to write some assembler glue functions yourself. Only
+  publicly available, free libraries are allowed at all. If you demand
+  OSlib just because you're doing a call to ColourTrans you shouldn't
+  bother to submit, for instance.
+
+- I'm not too enthusiastic about WIMP frontends and things like that
+  either. But then if it's really good I might include it, but it has
+  no priority for me.
+
+
+See also LICENSE.
+
+
+
+
+
+
+LICENSE:
+--------
+
+This license only applies to "Doom It Yourself". For the original Doom
+sources see DOOMLIC.TXT in the doom.zip archive.
+
+This release is Freeware. You may copy it freely as long as NO PART OF
+IT IS CHANGED. You are not allowed to spread modified versions; if you
+want changes to be included in the official release submit them to me
+(see CONTRIBUTIONS).
+This release comes with NO WARRANTY. I will not be held responsible for
+any kind of problems resulting from the use of this program, be it data
+loss, computer crashes, sleepless nights or running amuck with a chainsaw.
+Use it entirely at your own risk.
+
+Doom is a registered trademark of ID software.
+
+
+
+
+
+
+
+
+		Now kill 'em all!
+
+
+
+
+
+
+
+CONTACT:
+--------
+
+	Andreas Dehmel
+	Am Schorn 18
+	82327 Tutzing
+	Germany
+	dehmel@forwiss.tu-muenchen.de
+
+
+
+
+
+
+
+
+	Woeful one of endless sight beyond the veil of time
+	Of ancient darkness you're the keeper
+	My soul is black and black as night are the ways of thine
+	Wield the scythe of the Soulreaper
+
+			(Dissection -- Soulreaper)
