@@ -145,7 +145,7 @@ Si no, el comportamiento original (`$HOME/.doomrc`) se mantiene sin cambios.
 El port HP-UX original compilaba con `-DDOOM_NO_SFX` (sonido deshabilitado).
 HP-UX 11.00 tiene el servidor de audio `Aserver` (parte de HP Alib) corriendo
 en el B2000, y provee la API `simpleAudio` que devuelve un socket fd al que se
-escriben samples PCM directamente — igual que `/dev/dsp` en Linux.
+escriben samples PCM directamente - igual que `/dev/dsp` en Linux.
 
 **Infraestructura de audio en el B2000:**
 
@@ -180,7 +180,7 @@ escriben samples PCM directamente — igual que `/dev/dsp` en Linux.
      /* Linux: open /dev/dsp con ioctls */
 ```
 
-3. Sincronización de escritura — HP-UX usa el mismo método timer que Solaris:
+3. Sincronización de escritura - HP-UX usa el mismo método timer que Solaris:
 ```diff
 -#ifdef __sun
 +#if defined(__sun) || defined(__hpux)
@@ -223,7 +223,7 @@ Directorio: /opt/doom-hpux/
 
 Plataforma: HP-UX B.11.00 / PA-RISC 9000/785
 Comando:    /opt/doom-hpux/doom.sh
-Audio:      HP Alib / simpleAudio — 16-bit linear stereo via Aserver
+Audio:      HP Alib / simpleAudio - 16-bit linear stereo via Aserver
 ```
 
 ---
