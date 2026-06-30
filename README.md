@@ -1,79 +1,70 @@
-# Doom para HP-UX - HP Visualize B2000
+# Doom for HP-UX - HP Visualize B2000
 
-Port de **Doom It Yourself (DIY) v4.4.2** compilado y ejecutándose en una HP Visualize B2000 con HP-UX 11.00 PA-RISC.
+Port of **Doom It Yourself (DIY) v4.4.2** compiled and running on an HP Visualize B2000 with HP-UX 11.00 PA-RISC.
 
-## Hardware y sistema
+## Hardware and system
 
 | | |
 |---|---|
-| Máquina | HP Visualize B2000 |
-| Arquitectura | PA-RISC 2.0 (9000/785, Big-Endian) |
-| Sistema operativo | HP-UX B.11.00 |
-| Compilador | HP C Compiler A.11.01.00 |
-| Video | X11 con extensión MIT-SHM |
+| Machine | HP Visualize B2000 |
+| Architecture | PA-RISC 2.0 (9000/785, Big-Endian) |
+| Operating system | HP-UX B.11.00 |
+| Compiler | HP C Compiler A.11.01.00 |
+| Video | X11 with MIT-SHM extension |
 | Audio | HP Alib / simpleAudio - 16-bit linear stereo via `Aserver` |
 
-## Fuente base
+## Source base
 
-[Doom It Yourself (DIY) v4.4.2](https://zarquon.hier-im-netz.de/Programs/DIYSource.zip) - port multiplataforma de LinuxDoom 1.10 con soporte HP-UX nativo incluido.
+[Doom It Yourself (DIY) v4.4.2](https://zarquon.hier-im-netz.de/Programs/DIYSource.zip) - multiplatform port of LinuxDoom 1.10 with native HP-UX support included.
 
-## Cambios al código fuente
+## Source code changes
 
-**`src/Makefile` - Rutas X11**
-Las rutas originales apuntaban a `/usr/local/DIR/X11/R6.1/` (inexistente). Corregido a `/usr/include` y `/usr/lib/X11R6`, con `-L/usr/contrib/X11R6/lib` adicional para `libXmu`.
+**`src/Makefile` - X11 paths**
+The original paths pointed to `/usr/local/DIR/X11/R6.1/` (non-existent). Fixed to `/usr/include` and `/usr/lib/X11R6`, with an additional `-L/usr/contrib/X11R6/lib` for `libXmu`.
 
-**`src/Makefile` - Compatibilidad HP make**
-`make -C $(FASTLZDIR)` no es soportado por HP make. Reemplazado por `cd $(FASTLZDIR) && make CC=$(CC) ...`.
+**`src/Makefile` - HP make compatibility**
+`make -C $(FASTLZDIR)` is not supported by HP make. Replaced with `cd $(FASTLZDIR) && make CC=$(CC) ...`.
 
-**`src/d_main.c` - Config file junto al ejecutable**
-Si `DOOMWADDIR` está definido, el archivo de configuración se guarda como `doom.cfg` dentro de ese mismo directorio, en lugar de `$HOME/.doomrc`.
+**`src/d_main.c` - Config file next to the binary**
+If `DOOMWADDIR` is set, the config file is written as `doom.cfg` inside that directory instead of `$HOME/.doomrc`.
 
-**`src/i_sound.c` + `src/simpleAudio.h` - Sonido via HP Alib**
-DIY Doom compila para HP-UX con `-DDOOM_NO_SFX` (sin sonido). Se implementó soporte
-de audio usando `simpleAudio`, wrapper de HP sobre Alib. `openAStream()` devuelve un
-socket fd conectado al `Aserver` al que se escribe PCM 16-bit stereo, igual que
-`/dev/dsp` en Linux. `simpleAudio.c` no está en el repo (pertenece a HP) y se copia
-desde `/opt/audio/src/simpleAudio/` durante el build.
+**`src/i_sound.c` + `src/simpleAudio.h` - Sound via HP Alib**
+DIY Doom compiles for HP-UX with `-DDOOM_NO_SFX` (no sound). Audio support was implemented using `simpleAudio`, HP's wrapper over Alib. `openAStream()` returns a socket fd connected to `Aserver` where PCM 16-bit stereo is written directly, the same as `/dev/dsp` on Linux. `simpleAudio.c` is not in the repo (belongs to HP) and is copied from `/opt/audio/src/simpleAudio/` during the build.
 
-El path síncrono de HP-UX (`I_SubmitSound`) llama al audio 35 veces/seg mientras la
-frecuencia de reproducción es 11025 Hz, lo que provoca lag creciente sin throttling.
-Se implementó control de tiempo con `gettimeofday()` para saltar escrituras cuando el
-buffer supera 2 frames de adelanto (~93 ms de lag fijo).
+The HP-UX synchronous path (`I_SubmitSound`) is called 35 times/sec while the playback frequency is 11025 Hz, causing growing lag without throttling. Time-based throttling via `gettimeofday()` was implemented to skip writes when the buffer exceeds 2 frames ahead (~93 ms fixed lag).
 
-**`src/Makefile` - Optimización y límites de pantalla**
-Optimización subida de `-O` a `+O2 +Onolimit`. `MAXSCREENWIDTH` subido de 1024 a 1280
-y `MAXSCREENHEIGHT` de 768 a 800 para soportar el modo `-4` (1280×800) sin desbordamiento
-de los arrays del renderer de sprites.
+**`src/Makefile` - Optimization and screen limits**
+Optimization raised from `-O` to `+O2 +Onolimit`. `MAXSCREENWIDTH` raised from 1024 to 1280 and `MAXSCREENHEIGHT` from 768 to 800 to support `-4` mode (1280×800) without overflowing the sprite renderer arrays.
 
-Detalles completos en [docs/source-changes.md](docs/source-changes.md) y [docs/add-sound.md](docs/add-sound.md).
+Full details in [docs/machine-setup.md](docs/machine-setup.md) and [docs/add-sound.md](docs/add-sound.md).
 
 ## WAD
 
-Se usa **Freedoom Phase 1** (open-source, reemplaza Doom 1). Incluido en el directorio de distribución como `doom.wad`.
+**Freedoom Phase 1** (open-source, replaces Doom 1) is used. Included in the distribution directory as `doom.wad`.
 
-## Compilar y distribuir
+## Build and distribute
 
-### Requisito previo: WAD file
+### Prerequisite: WAD file
 
-El juego necesita un archivo WAD con los datos. No está incluido en el repositorio.
-Descargue **Freedoom Phase 1** (open-source, gratuito):
+The game needs a WAD file with game data. It is not included in the repository.
+Download **Freedoom Phase 1** (open-source, free):
 
 ```sh
 wget https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
 unzip -p freedoom-0.13.0.zip "*/freedoom1.wad" > freedoom1.wad
 ```
 
-Coloque `freedoom1.wad` en la raíz del proyecto (junto a `doom_build.sh`).
+Place `freedoom1.wad` in the project root (next to `doom_build.sh`).
 
-### Compilar en HP-UX
+### Compiling on HP-UX
 
-El script [`doom_build.sh`](doom_build.sh) compila el binario y genera `/opt/doom-hpux/` con todo lo necesario. Busca el WAD automáticamente en el directorio del proyecto o en `/tmp/`.
+The [`doom_build.sh`](doom_build.sh) script compiles the binary and generates `/opt/doom-hpux/` with everything needed. It automatically searches for the WAD in the project directory or in `/tmp/`.
 
-**Transferir al HP-UX** (desde Linux/otro Unix):
+**Transfer to HP-UX** (from Linux/other Unix):
 
 ```sh
 tar czf /tmp/doom-hpux-project.tar.gz src/ doom_build.sh freedoom1.wad
-ftp -n <ip-del-hpux> <<EOF
+ftp -n <hpux-ip> <<EOF
 user root <password>
 binary
 put /tmp/doom-hpux-project.tar.gz /tmp/doom-hpux-project.tar.gz
@@ -81,44 +72,53 @@ quit
 EOF
 ```
 
-**En el HP-UX**, descomprimir y lanzar la compilación con `at`
-(`at` es necesario para sobrevivir el cierre de la sesión telnet/ssh):
+**On HP-UX**, extract and launch the build with `at`
+(`at` is required to survive closing the telnet/ssh session):
 
 ```sh
-# HP-UX tar no soporta -z, descomprimir en dos pasos
+# HP-UX tar does not support -z, decompress in two steps
 cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
 
 chmod +x /tmp/doom_build.sh
 at -f /tmp/doom_build.sh now
 ```
 
-Monitorear el progreso:
+Monitor progress:
 
 ```sh
 tail -f /tmp/doom_build.log
-cat /tmp/doom_build.exit   # 0 = éxito
+cat /tmp/doom_build.exit   # 0 = success
 ```
 
-## Resultado
+## Result
 
 ```
 /opt/doom-hpux/
-├── doom-hpux   ← binario (663 KB)
+├── doom-hpux   ← binary (~680 KB)
 ├── doom.wad    ← Freedoom Phase 1 (28 MB)
-├── doom.cfg    ← configuración (se crea al salir del juego)
-└── doom.sh     ← script de lanzamiento
+├── doom.cfg    ← config (created on game exit)
+└── doom.sh     ← launch script
 ```
 
-## Ejecutar
+## Running
 
-Desde la terminal de CDE en el B2000:
+From a CDE terminal on the B2000:
 
 ```sh
 /opt/doom-hpux/doom.sh
 ```
 
-## Documentación
+Scale options (software scaling, CPU cost increases with factor):
 
-- [docs/machine-setup.md](docs/machine-setup.md) - Estado de la máquina, pasos de compilación, problemas encontrados y soluciones
-- [docs/source-changes.md](docs/source-changes.md) - Cambios al código fuente con diffs y justificación técnica
-- [docs/add-sound.md](docs/add-sound.md) - Implementación de sonido via HP Alib: cambios, problemas y soluciones
+| Flag | Resolution | Notes |
+|------|-----------|-------|
+| *(none)* | 320×200 | native, minimal CPU |
+| `-2` | 640×400 | recommended |
+| `-3` | 960×600 | |
+| `-4` | 1280×800 | fills screen, highest CPU load |
+
+## Documentation
+
+- [docs/machine-setup.md](docs/machine-setup.md) - Machine state, build steps, problems found and solutions
+- [docs/source-changes.md](docs/source-changes.md) - Source code changes with diffs and technical rationale
+- [docs/add-sound.md](docs/add-sound.md) - Sound implementation via HP Alib: changes, problems and solutions

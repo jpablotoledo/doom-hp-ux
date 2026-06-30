@@ -1,57 +1,49 @@
-# Implementación de sonido para HP-UX (HP Alib / simpleAudio)
+# Sound implementation for HP-UX (HP Alib / simpleAudio)
 
-## Contexto
+## Context
 
-DIY Doom 4.4.2 compila para HP-UX con `-DDOOM_NO_SFX` - sonido completamente
-deshabilitado. El B2000 tiene el servidor de audio `Aserver` corriendo y la API
-`simpleAudio` disponible en `/opt/audio/`. Esta guía documenta todos los cambios
-necesarios para habilitar sonido 16-bit stereo via HP Alib.
+DIY Doom 4.4.2 compiles for HP-UX with `-DDOOM_NO_SFX` - sound completely disabled. The B2000 has the `Aserver` audio server running and the `simpleAudio` API available in `/opt/audio/`. This document covers all changes required to enable 16-bit stereo sound via HP Alib.
 
-## Infraestructura de audio en el B2000
+## Audio infrastructure on the B2000
 
-| Componente       | Ubicación                               |
+| Component        | Location                                |
 |------------------|-----------------------------------------|
-| Servidor de audio| `/opt/audio/bin/Aserver` (corre siempre)|
-| Librería Alib    | `/opt/audio/lib/libAlib.sl`             |
-| Librería At      | `/opt/audio/lib/libAt.sl`               |
+| Audio server     | `/opt/audio/bin/Aserver` (always running)|
+| Alib library     | `/opt/audio/lib/libAlib.sl`             |
+| At library       | `/opt/audio/lib/libAt.sl`               |
 | Headers          | `/opt/audio/include/Alib.h`, `Audio.h`  |
-| API simplificada | `/opt/audio/src/simpleAudio/`           |
-| Dispositivos     | `/dev/audio`, `/dev/audioBA`            |
+| Simplified API   | `/opt/audio/src/simpleAudio/`           |
+| Devices          | `/dev/audio`, `/dev/audioBA`            |
 
-`simpleAudio` es un wrapper sobre Alib que abre una conexión TCP al `Aserver`
-y devuelve un file descriptor al que se escribe PCM directamente, igual que
-`/dev/dsp` en Linux. El fuente está en `/opt/audio/src/simpleAudio/simpleAudio.c`
-y no se distribuye en este repositorio - se copia automáticamente durante el
-build (ver `doom_build.sh`).
+`simpleAudio` is a wrapper over Alib that opens a TCP connection to `Aserver` and returns a file descriptor to which PCM is written directly, the same as `/dev/dsp` on Linux. The source is at `/opt/audio/src/simpleAudio/simpleAudio.c` and is not distributed in this repository - it is copied automatically during the build (see `doom_build.sh`).
 
 ---
 
-## Cambios realizados
+## Changes made
 
-### 1. `src/simpleAudio.h` - header de la API (archivo nuevo)
+### 1. `src/simpleAudio.h` - API header (new file)
 
-Copiado desde `/opt/audio/src/simpleAudio/simpleAudio.h` en el B2000.
-Contiene las declaraciones de las funciones y las constantes necesarias:
+Copied from `/opt/audio/src/simpleAudio/simpleAudio.h` on the B2000. Contains the function declarations and constants needed:
 
 ```c
-extern int  openAudio();               // conecta al Aserver
-extern void closeAudio();              // desconecta del Aserver
+extern int  openAudio();               // connect to Aserver
+extern void closeAudio();              // disconnect from Aserver
 extern int  openAStream(streamMode, sampleRate, channels,
                         dataFormat, device, startPaused);
 extern void closeAStream(int fd);
 
 #define PLAY_STREAM        0
 #define USE_STEREO         2
-#define USE_LIN16          0    // PCM 16-bit con signo
+#define USE_LIN16          0    // signed 16-bit PCM
 #define USE_DEFAULT_SPEAKER -1
 #define START_IMMEDIATELY  0
 ```
 
 ---
 
-### 2. `src/i_sound.c` - implementación de audio
+### 2. `src/i_sound.c` - audio implementation
 
-#### 2a. Includes para HP-UX
+#### 2a. Includes for HP-UX
 
 ```diff
  #ifdef __hpux
@@ -62,12 +54,11 @@ extern void closeAStream(int fd);
  #endif
 ```
 
-`sys/socket.h` y `netinet/in.h` son necesarios porque `audio_fd` es un socket
-TCP hacia Aserver y se usa `fcntl` sobre él.
+`sys/socket.h` and `netinet/in.h` are needed because `audio_fd` is a TCP socket to Aserver and `fcntl` is used on it.
 
-#### 2b. Inicialización del stream en `I_InitSound()`
+#### 2b. Stream initialization in `I_InitSound()`
 
-Bloque agregado después del bloque Solaris (`#ifdef __sun`):
+Block added after the Solaris block (`#ifdef __sun`):
 
 ```c
 #elif defined(__hpux)
@@ -88,10 +79,9 @@ Bloque agregado después del bloque Solaris (`#ifdef __sun`):
     fprintf(logfile, "using HP Alib 16bit linear stereo; ");
 ```
 
-El `O_NONBLOCK` es importante: si el buffer de Aserver está lleno, el `write()`
-devuelve `EAGAIN` en lugar de bloquear el game loop.
+`O_NONBLOCK` is important: if the Aserver buffer is full, `write()` returns `EAGAIN` instead of blocking the game loop.
 
-#### 2c. Cierre del stream en `I_ShutdownSound()`
+#### 2c. Stream shutdown in `I_ShutdownSound()`
 
 ```c
 #elif defined(__hpux)
@@ -99,20 +89,17 @@ devuelve `EAGAIN` en lugar de bloquear el game loop.
     closeAudio();
 ```
 
-#### 2d. Throttling en `I_SubmitSound()` - el cambio más importante
+#### 2d. Throttling in `I_SubmitSound()` - the most important change
 
-HP-UX no usa `SNDINTR` (interrupciones de timer), así que `I_SubmitSound()` se
-llama sincrónicamente desde el game loop, 35 veces por segundo. El problema:
+HP-UX does not use `SNDINTR` (timer interrupts), so `I_SubmitSound()` is called synchronously from the game loop, 35 times per second. The problem:
 
-- Game loop: llama `I_SubmitSound()` 35 veces/seg
-- Cada llamada escribe `SampleCount` = 512 samples
-- Total escrito: 512 × 35 = **17.920 samples/seg**
-- Frecuencia de reproducción: **11.025 Hz**
-- Resultado: escribimos 1,6× más rápido de lo que Aserver reproduce → el buffer
-  de Aserver se llena → lag creciente con el tiempo
+- Game loop: calls `I_SubmitSound()` 35 times/sec
+- Each call writes `SampleCount` = 512 samples
+- Total written: 512 × 35 = **17,920 samples/sec**
+- Playback frequency: **11,025 Hz**
+- Result: we write 1.6× faster than Aserver plays back → Aserver buffer fills up → growing lag over time
 
-La solución es medir el tiempo real transcurrido y saltar escrituras cuando
-estamos más de 2 buffers por delante de la reproducción:
+The fix is to measure real elapsed time and skip writes when we are more than 2 buffers ahead of playback:
 
 ```c
 #ifdef __hpux
@@ -145,12 +132,11 @@ estamos más de 2 buffers por delante de la reproducción:
 #endif
 ```
 
-Lag resultante: 2 × 512 / 11025 ≈ **93 ms** (fijo, no creciente).
+Resulting lag: 2 × 512 / 11025 ≈ **93 ms** (fixed, not growing).
 
-#### 2e. Sincronización de timer (para completitud)
+#### 2e. Timer synchronization (for completeness)
 
-El bloque de sincronización por timer (usado en Solaris con SNDINTR) se amplió
-para incluir HP-UX, aunque en la práctica HP-UX no define SNDINTR:
+The timer-based sync block (used on Solaris with SNDINTR) was extended to include HP-UX, although in practice HP-UX does not define SNDINTR:
 
 ```diff
 -#ifdef __sun
@@ -160,76 +146,68 @@ para incluir HP-UX, aunque en la práctica HP-UX no define SNDINTR:
 
 ---
 
-### 3. `src/Makefile` - flags de compilación y linkeo
+### 3. `src/Makefile` - compilation and linking flags
 
-#### 3a. HPFLAGS: audio y optimización
+#### 3a. HPFLAGS: audio and optimization
 
 ```diff
--HPFLAGS = COMPFLAGS='-O +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include $(DBGFLAG)'
--          LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -lX11 -lXext -lICE -lXmu'
-+HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG)'
-+          LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -L/opt/audio/lib -lX11 -lXext -lICE -lXmu -lAlib -lAt'
+-HPFLAGS = COMPFLAGS='-O +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include ...'
+-          LDFLAGS='... -lX11 -lXext -lICE -lXmu'
++HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include ...'
++          LDFLAGS='... -lX11 -lXext -lICE -lXmu -lAlib -lAt'
 ```
 
-- `-DDOOM_NO_SFX` eliminado - habilita el código de audio
-- `-I/opt/audio/include` - headers de simpleAudio y Alib
-- `-L/opt/audio/lib -lAlib -lAt` - librerías de HP audio
-- `-O` → `+O2 +Onolimit` - optimización nivel 2 sin límite de tamaño
+- `-DDOOM_NO_SFX` removed - enables the audio code
+- `-I/opt/audio/include` - simpleAudio and Alib headers
+- `-L/opt/audio/lib -lAlib -lAt` - HP audio libraries
+- `-O` → `+O2 +Onolimit` - level 2 optimization with no size limit
 
-#### 3b. OBJS: agregar simpleAudio.o
+#### 3b. OBJS: add simpleAudio.o
 
 ```diff
  $(OBJPATH)i_sound.o \
 +$(OBJPATH)simpleAudio.o
 ```
 
-#### 3c. Regla de compilación para simpleAudio.o
+#### 3c. Compile rule for simpleAudio.o
 
 ```makefile
 $(OBJPATH)simpleAudio.o: simpleAudio.c simpleAudio.h
 	$(CC) $(CFLAGS) -I/opt/audio/include -c -o $(OBJPATH)simpleAudio.o simpleAudio.c
 ```
 
-`simpleAudio.c` no está en el repositorio (pertenece a HP). `doom_build.sh` lo
-copia desde `/opt/audio/src/simpleAudio/simpleAudio.c` antes de compilar.
+`simpleAudio.c` is not in the repository (belongs to HP). `doom_build.sh` copies it from `/opt/audio/src/simpleAudio/simpleAudio.c` before compiling.
 
-#### 3d. MAXSCREENWIDTH y MAXSCREENHEIGHT
+#### 3d. MAXSCREENWIDTH and MAXSCREENHEIGHT
 
 ```diff
 -OPTIONS = -DFULL_NEW_FEATURES -DMAXSCREENWIDTH=1024 -DMAXSCREENHEIGHT=768
 +OPTIONS = -DFULL_NEW_FEATURES -DMAXSCREENWIDTH=1280 -DMAXSCREENHEIGHT=800
 ```
 
-Los arrays del renderer de sprites (`r_things.c`, `r_plane.c`, `r_state.h`) se
-dimensionan con estas constantes en tiempo de compilación. Con `-4` (escala 4×),
-la resolución es 1280×800. Con el valor original de 1024, el renderer
-desbordaba los arrays al dibujar sprites de enemigos → `Memory fault (coredump)`.
+The sprite renderer arrays (`r_things.c`, `r_plane.c`, `r_state.h`) are statically sized using these constants at compile time. With `-4` (4× scale), the resolution is 1280×800. With the original value of 1024, the renderer overflowed the arrays when drawing enemy sprites → `Memory fault (coredump)`.
 
 ---
 
-## Problemas encontrados durante la implementación
+## Problems encountered during implementation
 
 ### P1: `IPPROTO_TCP` undefined
-`setsockopt(IPPROTO_TCP, TCP_NODELAY)` requiere `<netinet/in.h>` en HP-UX
-(no solo `<netinet/tcp.h>`). Se intentó usar para reducir latencia TCP pero
-se descartó - `O_NONBLOCK` es suficiente y más seguro sobre fds no-TCP.
+`setsockopt(IPPROTO_TCP, TCP_NODELAY)` requires `<netinet/in.h>` on HP-UX (not just `<netinet/tcp.h>`). It was attempted to reduce TCP latency but discarded - `O_NONBLOCK` is sufficient and safer on non-TCP fds.
 
-### P2: Lag de audio creciente
-`I_SubmitSound()` sin throttling escribe 1,6× más rápido que la frecuencia de
-reproducción. El buffer de Aserver se llena y el lag crece con el tiempo.
-Solución: throttling con `gettimeofday()` (ver cambio 2d).
+### P2: Growing audio lag
+`I_SubmitSound()` without throttling writes 1.6× faster than the playback frequency. The Aserver buffer fills up and lag grows over time.
+Fix: throttling with `gettimeofday()` (see change 2d).
 
-### P3: Memory fault al ver enemigos con `-4`
-`MAXSCREENWIDTH=1024` insuficiente para resolución 1280px. Los arrays estáticos
-del renderer de sprites se desbordaban al indexar por columna de pantalla.
-Solución: subir límites a 1280×800 (cambio 3d).
+### P3: Memory fault when seeing enemies with `-4`
+`MAXSCREENWIDTH=1024` insufficient for 1280px resolution. The static arrays in the sprite renderer overflowed when indexing by screen column.
+Fix: raise limits to 1280×800 (change 3d).
 
 ---
 
-## Resultado
+## Result
 
 ```
-Audio:   HP Alib / simpleAudio - PCM 16-bit stereo a 11025 Hz via Aserver
-Lag:     ~93 ms (fijo)
-Estable: sin coredumps hasta resolución 1280×800 (flag -4)
+Audio:   HP Alib / simpleAudio - PCM 16-bit stereo at 11025 Hz via Aserver
+Lag:     ~93 ms (fixed)
+Stable:  no coredumps up to 1280×800 resolution (flag -4)
 ```

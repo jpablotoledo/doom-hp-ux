@@ -1,21 +1,21 @@
-# Configuración de la máquina HP Visualize B2000
+# HP Visualize B2000 Machine Setup
 
-## Datos del sistema
+## System info
 
-| Parámetro         | Valor                                          |
+| Parameter         | Value                                          |
 |-------------------|------------------------------------------------|
 | Hardware          | HP Visualize B2000                             |
-| Arquitectura      | PA-RISC 2.0 (chip 9000/785, Big-Endian)        |
-| Sistema operativo | HP-UX B.11.00 (hostname: tmp2-80)              |
-| IP de acceso      | 192.168.1.37 (telnet, usuario root)            |
-| Objetivo          | Compilar y ejecutar Doom It Yourself 4.4.2     |
-| Resultado         | **EXITOSO** - Doom corriendo al 85% CPU        |
+| Architecture      | PA-RISC 2.0 (chip 9000/785, Big-Endian)        |
+| Operating system  | HP-UX B.11.00 (hostname: tmp2-80)             |
+| Access            | 192.168.1.37 (telnet, user root)               |
+| Goal              | Compile and run Doom It Yourself 4.4.2         |
+| Result            | **SUCCESS** - Doom running at 85% CPU          |
 
 ---
 
-## Estado inicial de la máquina (auditoría)
+## Initial machine state (audit)
 
-### Compilador
+### Compiler
 
 ```
 what /usr/bin/cc
@@ -23,58 +23,57 @@ what /usr/bin/cc
   PATCH/11.00:PHCO_95167  Oct  1 1998
 ```
 
-- **Compilador nativo HP C** versión A.11.01.00 disponible en `/usr/bin/cc`
-- **GCC no instalado** (`sh: gcc: not found`)
+- **Native HP C compiler** version A.11.01.00 available at `/usr/bin/cc`
+- **GCC not installed** (`sh: gcc: not found`)
 
 ### X11
 
-| Ruta                        | Contenido                            |
+| Path                        | Contents                             |
 |-----------------------------|--------------------------------------|
-| `/usr/include/X11/`         | Headers X11 (Xlib.h, etc.)           |
-| `/usr/include/X11R6/X11/`  | Headers X11R6 (alternativo)          |
-| `/usr/lib/X11R6/`           | libX11, libXext, libICE, libSM      |
-| `/usr/contrib/X11R6/lib/`  | **libXmu** (NO estaba en X11R6/)     |
-| `/usr/lib/X11R4/`           | libXmu.sl (versión vieja)            |
+| `/usr/include/X11/`         | X11 headers (Xlib.h, etc.)           |
+| `/usr/include/X11R6/X11/`  | X11R6 headers (alternative)          |
+| `/usr/lib/X11R6/`           | libX11, libXext, libICE, libSM       |
+| `/usr/contrib/X11R6/lib/`  | **libXmu** (NOT in X11R6/)           |
+| `/usr/lib/X11R4/`           | libXmu.sl (old version)              |
 
-**Punto clave:** `libXmu` no estaba en `/usr/lib/X11R6/` sino en `/usr/contrib/X11R6/lib/`. El Makefile original apuntaba a una ruta inexistente.
+**Key point:** `libXmu` was not in `/usr/lib/X11R6/` but in `/usr/contrib/X11R6/lib/`. The original Makefile pointed to a non-existent path.
 
-### Herramientas
+### Tools
 
-| Herramienta | Estado         | Observación                              |
-|-------------|----------------|------------------------------------------|
-| `make`      | `/usr/bin/make`| HP make (no GNU make; no soporta `--version` ni `-C`) |
-| `tar`       | `/usr/bin/tar` | HP tar (no soporta flag `-z` para gzip) |
-| `gunzip`    | disponible     | Necesario para descomprimir .tar.gz      |
-| `ftp`       | `/usr/bin/ftp` | Usado para transferencia de archivos     |
-| `at`        | disponible     | Usado para ejecutar builds sin terminal  |
+| Tool    | Status          | Notes                                            |
+|---------|-----------------|--------------------------------------------------|
+| `make`  | `/usr/bin/make` | HP make (not GNU make; no `--version` or `-C`)   |
+| `tar`   | `/usr/bin/tar`  | HP tar (no `-z` flag for gzip)                   |
+| `gunzip`| available       | Required to decompress .tar.gz                   |
+| `ftp`   | `/usr/bin/ftp`  | Used for file transfers                          |
+| `at`    | available       | Used to run builds without a terminal            |
 
-### Espacio en disco
+### Disk space
 
-| Filesystem | Total  | Libre  | Montaje  |
+| Filesystem | Total  | Free   | Mount    |
 |------------|--------|--------|----------|
 | /          | 248MB  | 118MB  | lvol3    |
 | /tmp       | 480MB  | 478MB  | lvol6    |
 | /diska     | 7.8GB  | 6.5GB  | vg01     |
 
-### Software instalado relevante
+### Relevant installed software
 
-| Bundle              | Descripción                                         |
-|---------------------|-----------------------------------------------------|
-| B3899BA B.11.01.07  | HP C/ANSI C Developer's Bundle para HP-UX 11.00 ✓ |
-| FIREFOX 2.0.0.2     | Firefox para HP-UX                                  |
-| /root/games/        | Colección de juegos en depot (.depot)               |
+| Bundle              | Description                                          |
+|---------------------|------------------------------------------------------|
+| B3899BA B.11.01.07  | HP C/ANSI C Developer's Bundle for HP-UX 11.00 ✓   |
+| FIREFOX 2.0.0.2     | Firefox for HP-UX                                    |
+| /root/games/        | Game collection in depot format (.depot)             |
 
 ---
 
-## Pasos realizados en la máquina
+## Steps performed on the machine
 
-### 1. Transferencia del código fuente
+### 1. Source code transfer
 
-El código fue preparado en la máquina Linux (fuentes convertidos a Unix con `install.sh`)
-y transferido al HP-UX con FTP:
+The code was prepared on a Linux machine (sources converted to Unix format with `install.sh`) and transferred to HP-UX via FTP:
 
 ```sh
-# En Linux:
+# On Linux:
 tar czf /tmp/doom-src.tar.gz src/
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
@@ -83,16 +82,15 @@ put /tmp/doom-src.tar.gz /tmp/doom-src.tar.gz
 quit
 EOF
 
-# En HP-UX:
+# On HP-UX:
 cd /tmp && gunzip doom-src.tar.gz && tar xf doom-src.tar
 ```
 
-**Nota:** HP-UX `tar` no soporta `-z`. Hay que descomprimir primero con `gunzip`.
+**Note:** HP-UX `tar` does not support `-z`. Decompress first with `gunzip`.
 
-### 2. Compilación
+### 2. Compilation
 
-El build fue enviado al demonio `at` para aislarlo de la sesión telnet y evitar
-que SIGHUP interrumpa el compilador al cerrar sesión:
+The build was submitted to the `at` daemon to isolate it from the telnet session and prevent SIGHUP from killing the compiler when the session closes:
 
 ```sh
 # Script /tmp/doom_build.sh:
@@ -108,27 +106,24 @@ echo $? > /tmp/doom_build.exit
 at -f /tmp/doom_build.sh now
 ```
 
-**Problema con nohup:** los intentos anteriores con `nohup ... &` fallaban porque
-el compilador interno `ccom` recibía SIGHUP del proceso group al cerrar sesión,
-incluso con `nohup`. La solución fue usar `at` (corre bajo `atd`, sin terminal).
+**Problem with nohup:** Previous attempts with `nohup ... &` failed because the internal `ccom` compiler process received SIGHUP from the process group when the session closed, even with `nohup`. The fix was to use `at` (runs under `atd`, no terminal attached).
 
-**Resultado de compilación:**
+**Build result:**
 ```
 exit code: 0
-binario:   /tmp/src/hpdiy8 (663.552 bytes)
+binary:    /tmp/src/hpdiy8 (663,552 bytes)
 ```
 
-### 3. Obtención del WAD (archivo de datos del juego)
+### 3. Obtaining the WAD (game data file)
 
-Doom requiere un archivo WAD con todos los datos del juego. No había ninguno
-en la máquina. Se descargó **Freedoom Phase 1** (WAD libre y open-source):
+Doom requires a WAD file with all game data. None was present on the machine. **Freedoom Phase 1** (free, open-source WAD) was downloaded:
 
 ```sh
-# En Linux:
+# On Linux:
 wget https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
 unzip -p freedoom-0.13.0.zip "*/freedoom1.wad" > /tmp/freedoom1.wad
 
-# Transferencia al HP-UX (28MB):
+# Transfer to HP-UX (28MB):
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
@@ -137,20 +132,18 @@ quit
 EOF
 ```
 
-### 4. Ejecución
+### 4. Running
 
-DIY Doom no acepta rutas completas en `-iwad`. Busca el WAD por su nombre estándar
-(`doom.wad`, `doom2.wad`, etc.) en el directorio indicado por `DOOMWADDIR`.
-Se creó un symlink con el nombre esperado:
+DIY Doom does not accept full paths with `-iwad`. It looks for the WAD by its standard name (`doom.wad`, `doom2.wad`, etc.) in the directory set by `DOOMWADDIR`. A symlink with the expected name was created:
 
 ```sh
-# En HP-UX:
+# On HP-UX:
 ln -s /tmp/freedoom1.wad /tmp/doom.wad
 cd /tmp/src
 DOOMWADDIR=/tmp DISPLAY=:0.0 ./hpdiy8
 ```
 
-**Salida de inicio exitosa:**
+**Successful startup output:**
 ```
 DOOM Registered Startup v1.11
 V_Init: Allocated 4 screens.
@@ -160,40 +153,33 @@ I_ZoneBase: Starting with 32768k memory.
 W_Init: Init WADfiles.
  adding /tmp/doom.wad
  -->  E1M1-E4M9
-M_Init: Init miscellaneous info.
-R_Init: Init DOOM refresh daemon - ...
-P_Init: Init Playloop state.
-I_Init: Setting up machine state.
-D_CheckNetGame: Checking network game status.
-S_Init: Setting up sound.
-HU_Init: Setting up heads up display.
-ST_Init: Init status bar.
+...
 Using MITSHM extension
 shared memory id=8197, addr=0xc0d5b000
 ```
 
-El proceso corre al **85% de CPU** renderizando el juego.
+The process runs at **85% CPU** rendering the game.
 
 ---
 
-## Distribución final en la máquina
+## Final distribution on the machine
 
-El build script genera el directorio autosuficiente `/opt/doom-hpux/`:
+The build script generates the self-contained directory `/opt/doom-hpux/`:
 
 ```
 /opt/doom-hpux/
-├── doom-hpux     663.552 bytes  ← binario
-├── doom.wad   28.795.076 bytes  ← Freedoom Phase 1 (copia completa)
-├── doom.cfg            0 bytes  ← config (Doom escribe aquí al salir)
-└── doom.sh           144 bytes  ← script de lanzamiento
+├── doom-hpux     ~680 KB   ← compiled binary
+├── doom.wad    28.795 KB   ← Freedoom Phase 1 (full copy)
+├── doom.cfg         0 B    ← config (Doom writes here on exit)
+└── doom.sh        144 B    ← launch script
 ```
 
-**Para iniciar Doom desde la terminal CDE del B2000:**
+**To start Doom from a CDE terminal on the B2000:**
 ```sh
 /opt/doom-hpux/doom.sh
 ```
 
-El script `doom.sh` se encarga de configurar `DOOMWADDIR` y `DISPLAY` automáticamente:
+The `doom.sh` script sets `DOOMWADDIR` and `DISPLAY` automatically:
 ```sh
 #!/bin/sh
 DOOM_DIR=`dirname $0`
@@ -201,9 +187,9 @@ cd "$DOOM_DIR"
 DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux "$@"
 ```
 
-Para **regenerar la distribución completa** desde cero (por ejemplo después de un reboot):
+To **rebuild the full distribution** from scratch (e.g. after a reboot):
 ```sh
-# 1. Copiar el script a la máquina (desde Linux):
+# 1. Copy the script to the machine (from Linux):
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
@@ -211,43 +197,38 @@ put /tmp/doom_build.sh /tmp/doom_build.sh
 quit
 EOF
 
-# 2. En HP-UX:
+# 2. On HP-UX:
 chmod +x /tmp/doom_build.sh
 at -f /tmp/doom_build.sh now
 
-# 3. Monitorear:
+# 3. Monitor:
 tail -f /tmp/doom_build.log
-cat /tmp/doom_build.exit   # 0 = éxito
+cat /tmp/doom_build.exit   # 0 = success
 ```
 
 ---
 
-## Problemas encontrados y soluciones
+## Problems found and solutions
 
-### P1: `tar xzf` no funciona en HP-UX
-**Causa:** HP-UX tar no tiene la opción `-z` para descompresión gzip.  
-**Solución:** `gunzip archivo.tar.gz && tar xf archivo.tar`
+### P1: `tar xzf` does not work on HP-UX
+**Cause:** HP-UX tar has no `-z` option for gzip decompression.
+**Fix:** `gunzip file.tar.gz && tar xf file.tar`
 
-### P2: `make -C dir` no es compatible con HP make
-**Causa:** HP make no soporta la opción `-C` (extensión de GNU make).  
-**Solución:** Cambiar en el Makefile a `cd dir && make` (ver docs/source-changes.md)
+### P2: `make -C dir` is not compatible with HP make
+**Cause:** HP make does not support the `-C` option (GNU make extension).
+**Fix:** Change the Makefile to `cd dir && make` (see docs/source-changes.md)
 
-### P3: Compilador `ccom` muere por SIGHUP al cerrar sesión telnet
-**Causa:** Al cerrar la sesión ksh, el shell envía SIGHUP al process group.
-El subproceso `ccom` del compilador HP no ignora SIGHUP aunque el padre use `nohup`.  
-**Solución:** Usar el comando `at` para ejecutar el build, que corre bajo `atd`
-sin terminal y nunca recibe SIGHUP.
+### P3: Compiler `ccom` dies from SIGHUP when closing the telnet session
+**Cause:** When ksh session closes, the shell sends SIGHUP to the process group. The `ccom` subprocess of the HP compiler does not ignore SIGHUP even when the parent uses `nohup`.
+**Fix:** Use the `at` command to run the build; it runs under `atd` with no terminal and never receives SIGHUP.
 
-### P4: `-iwad /ruta/completa.wad` no funciona en DIY Doom
-**Causa:** `IdentifyVersionByName()` espera un nombre corto como "doom" o "doom2",
-no una ruta. Si el nombre no está en su lista interna, ignora el argumento y
-llama a `IdentifyVersion()`, que busca WADs estándar en `DOOMWADDIR`.  
-**Solución:** Crear symlink con nombre estándar + variable `DOOMWADDIR`.
+### P4: `-iwad /full/path.wad` does not work in DIY Doom
+**Cause:** `IdentifyVersionByName()` expects a short name like "doom" or "doom2", not a path. If the name is not in its internal list, it ignores the argument and calls `IdentifyVersion()`, which looks for standard WADs in `DOOMWADDIR`.
+**Fix:** Create a symlink with the standard name + `DOOMWADDIR` variable.
 
-### P5: No hay WAD comercial disponible
-**Solución:** Usar Freedoom Phase 1 (freedoom1.wad), WAD libre compatible con
-el formato IWAD de Doom 1. Descargado de GitHub releases.
+### P5: No commercial WAD available
+**Fix:** Use Freedoom Phase 1 (freedoom1.wad), a free WAD compatible with the Doom 1 IWAD format. Downloaded from GitHub releases.
 
-### P6: libXmu no en `/usr/lib/X11R6/`
-**Causa:** En este sistema, `libXmu` está en `/usr/contrib/X11R6/lib/`.  
-**Solución:** Agregar `-L/usr/contrib/X11R6/lib` a `LDFLAGS` en el Makefile.
+### P6: libXmu not in `/usr/lib/X11R6/`
+**Cause:** On this system, `libXmu` is in `/usr/contrib/X11R6/lib/`.
+**Fix:** Add `-L/usr/contrib/X11R6/lib` to `LDFLAGS` in the Makefile.
