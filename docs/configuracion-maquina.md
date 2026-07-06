@@ -70,42 +70,40 @@ what /usr/bin/cc
 
 ### 1. Transferencia del código fuente
 
-El código fue preparado en la máquina Linux (fuentes convertidos a Unix con `install.sh`)
-y transferido al HP-UX con FTP:
+El proyecto completo (fuentes + script de build + WAD shareware) fue empaquetado en Linux
+y transferido vía FTP:
 
 ```sh
 # En Linux:
-tar czf /tmp/doom-src.tar.gz src/
+tar czf /tmp/doom-hpux-project.tar.gz --transform 's|^|doom-hpux/|' src/ doom_build.sh shareware/
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/doom-src.tar.gz /tmp/doom-src.tar.gz
+put /tmp/doom-hpux-project.tar.gz /tmp/doom-hpux-project.tar.gz
 quit
 EOF
 
 # En HP-UX:
-cd /tmp && gunzip doom-src.tar.gz && tar xf doom-src.tar
+cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
 ```
 
 **Nota:** HP-UX `tar` no soporta `-z`. Hay que descomprimir primero con `gunzip`.
+El tarball se extrae en `/tmp/doom-hpux/`.
 
 ### 2. Compilación
 
-El build fue enviado al demonio `at` para aislarlo de la sesión telnet y evitar
-que SIGHUP interrumpa el compilador al cerrar sesión:
+El script de build muestra la salida del compilador en tiempo real y guarda el log
+en `/tmp/doom_build.log`. Se ejecuta directamente desde la sesión telnet:
 
 ```sh
-# Script /tmp/doom_build.sh:
-#!/bin/sh
-trap "" 1 2 15
-cd /tmp/src
-make clean_hp 2>/dev/null
-make hp8 > /tmp/doom_build.log 2>&1
-echo $? > /tmp/doom_build.exit
+sh /tmp/doom-hpux/doom_build.sh
 ```
 
+Para ejecutar desconectado (sobrevive el cierre de la sesión telnet), usar `at`:
+
 ```sh
-at -f /tmp/doom_build.sh now
+at -f /tmp/doom-hpux/doom_build.sh now
+tail -f /tmp/doom_build.log
 ```
 
 **Problema con nohup:** los intentos anteriores con `nohup ... &` fallaban porque
@@ -115,24 +113,20 @@ incluso con `nohup`. La solución fue usar `at` (corre bajo `atd`, sin terminal)
 **Resultado de compilación:**
 ```
 exit code: 0
-binario:   /tmp/src/hpdiy8 (663.552 bytes)
+binario:   /tmp/doom-hpux/src/hpdiy8 (663.552 bytes)
 ```
 
 ### 3. Obtención del WAD (archivo de datos del juego)
 
 Doom requiere un archivo WAD con todos los datos del juego. No había ninguno
-en la máquina. Se descargó **Freedoom Phase 1** (WAD libre y open-source):
+en la máquina. Se transfirió el **shareware de Doom 1** (`doom1.wad`):
 
 ```sh
-# En Linux:
-wget https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
-unzip -p freedoom-0.13.0.zip "*/freedoom1.wad" > /tmp/freedoom1.wad
-
-# Transferencia al HP-UX (28MB):
+# Transferencia al HP-UX (~4 MB):
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/freedoom1.wad /tmp/freedoom1.wad
+put /tmp/doom1.wad /tmp/doom1.wad
 quit
 EOF
 ```
@@ -145,7 +139,7 @@ Se creó un symlink con el nombre esperado:
 
 ```sh
 # En HP-UX:
-ln -s /tmp/freedoom1.wad /tmp/doom.wad
+ln -s /tmp/doom1.wad /tmp/doom.wad
 cd /tmp/src
 DOOMWADDIR=/tmp DISPLAY=:0.0 ./hpdiy8
 ```
@@ -183,7 +177,7 @@ El build script genera el directorio autosuficiente `/opt/doom-hpux/`:
 ```
 /opt/doom-hpux/
 ├── doom-hpux     663.552 bytes  ← binario
-├── doom.wad   28.795.076 bytes  ← Freedoom Phase 1 (copia completa)
+├── doom.wad    4.196.020 bytes  ← shareware Doom 1 (copia completa)
 ├── doom.cfg            0 bytes  ← config (Doom escribe aquí al salir)
 └── doom.sh           144 bytes  ← script de lanzamiento
 ```
@@ -203,21 +197,18 @@ DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux "$@"
 
 Para **regenerar la distribución completa** desde cero (por ejemplo después de un reboot):
 ```sh
-# 1. Copiar el script a la máquina (desde Linux):
+# 1. Desde Linux, transferir el tarball completo del proyecto:
+tar czf /tmp/doom-hpux-project.tar.gz --transform 's|^|doom-hpux/|' src/ doom_build.sh shareware/
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/doom_build.sh /tmp/doom_build.sh
+put /tmp/doom-hpux-project.tar.gz /tmp/doom-hpux-project.tar.gz
 quit
 EOF
 
 # 2. En HP-UX:
-chmod +x /tmp/doom_build.sh
-at -f /tmp/doom_build.sh now
-
-# 3. Monitorear:
-tail -f /tmp/doom_build.log
-cat /tmp/doom_build.exit   # 0 = éxito
+cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
+sh /tmp/doom-hpux/doom_build.sh
 ```
 
 ---
@@ -244,9 +235,8 @@ no una ruta. Si el nombre no está en su lista interna, ignora el argumento y
 llama a `IdentifyVersion()`, que busca WADs estándar en `DOOMWADDIR`.  
 **Solución:** Crear symlink con nombre estándar + variable `DOOMWADDIR`.
 
-### P5: No hay WAD comercial disponible
-**Solución:** Usar Freedoom Phase 1 (freedoom1.wad), WAD libre compatible con
-el formato IWAD de Doom 1. Descargado de GitHub releases.
+### P5: No hay WAD disponible en la máquina
+**Solución:** Transferir el WAD del shareware de Doom 1 (`doom1.wad`) vía FTP.
 
 ### P6: libXmu no en `/usr/lib/X11R6/`
 **Causa:** En este sistema, `libXmu` está en `/usr/contrib/X11R6/lib/`.  

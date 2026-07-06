@@ -70,40 +70,39 @@ what /usr/bin/cc
 
 ### 1. Source code transfer
 
-The code was prepared on a Linux machine (sources converted to Unix format with `install.sh`) and transferred to HP-UX via FTP:
+The full project (sources + build script + shareware WAD) was packed on Linux and transferred via FTP:
 
 ```sh
 # On Linux:
-tar czf /tmp/doom-src.tar.gz src/
+tar czf /tmp/doom-hpux-project.tar.gz --transform 's|^|doom-hpux/|' src/ doom_build.sh shareware/
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/doom-src.tar.gz /tmp/doom-src.tar.gz
+put /tmp/doom-hpux-project.tar.gz /tmp/doom-hpux-project.tar.gz
 quit
 EOF
 
 # On HP-UX:
-cd /tmp && gunzip doom-src.tar.gz && tar xf doom-src.tar
+cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
 ```
 
 **Note:** HP-UX `tar` does not support `-z`. Decompress first with `gunzip`.
+The tarball extracts to `/tmp/doom-hpux/`.
 
 ### 2. Compilation
 
-The build was submitted to the `at` daemon to isolate it from the telnet session and prevent SIGHUP from killing the compiler when the session closes:
+The build script prints compiler output in real time and writes a log to `/tmp/doom_build.log`.
+Run directly from the telnet session:
 
 ```sh
-# Script /tmp/doom_build.sh:
-#!/bin/sh
-trap "" 1 2 15
-cd /tmp/src
-make clean_hp 2>/dev/null
-make hp8 > /tmp/doom_build.log 2>&1
-echo $? > /tmp/doom_build.exit
+sh /tmp/doom-hpux/doom_build.sh
 ```
 
+To run detached (survives closing the telnet session), use `at`:
+
 ```sh
-at -f /tmp/doom_build.sh now
+at -f /tmp/doom-hpux/doom_build.sh now
+tail -f /tmp/doom_build.log
 ```
 
 **Problem with nohup:** Previous attempts with `nohup ... &` failed because the internal `ccom` compiler process received SIGHUP from the process group when the session closed, even with `nohup`. The fix was to use `at` (runs under `atd`, no terminal attached).
@@ -111,23 +110,19 @@ at -f /tmp/doom_build.sh now
 **Build result:**
 ```
 exit code: 0
-binary:    /tmp/src/hpdiy8 (663,552 bytes)
+binary:    /tmp/doom-hpux/src/hpdiy8 (663,552 bytes)
 ```
 
 ### 3. Obtaining the WAD (game data file)
 
-Doom requires a WAD file with all game data. None was present on the machine. **Freedoom Phase 1** (free, open-source WAD) was downloaded:
+Doom requires a WAD file with all game data. None was present on the machine. The **Doom 1 shareware** WAD (`doom1.wad`) was transferred:
 
 ```sh
-# On Linux:
-wget https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
-unzip -p freedoom-0.13.0.zip "*/freedoom1.wad" > /tmp/freedoom1.wad
-
-# Transfer to HP-UX (28MB):
+# Transfer to HP-UX (~4 MB):
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/freedoom1.wad /tmp/freedoom1.wad
+put /tmp/doom1.wad /tmp/doom1.wad
 quit
 EOF
 ```
@@ -138,7 +133,7 @@ DIY Doom does not accept full paths with `-iwad`. It looks for the WAD by its st
 
 ```sh
 # On HP-UX:
-ln -s /tmp/freedoom1.wad /tmp/doom.wad
+ln -s /tmp/doom1.wad /tmp/doom.wad
 cd /tmp/src
 DOOMWADDIR=/tmp DISPLAY=:0.0 ./hpdiy8
 ```
@@ -169,7 +164,7 @@ The build script generates the self-contained directory `/opt/doom-hpux/`:
 ```
 /opt/doom-hpux/
 ├── doom-hpux     ~680 KB   ← compiled binary
-├── doom.wad    28.795 KB   ← Freedoom Phase 1 (full copy)
+├── doom.wad     4.196 KB   ← Doom 1 shareware (full copy)
 ├── doom.cfg         0 B    ← config (Doom writes here on exit)
 └── doom.sh        144 B    ← launch script
 ```
@@ -189,21 +184,18 @@ DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux "$@"
 
 To **rebuild the full distribution** from scratch (e.g. after a reboot):
 ```sh
-# 1. Copy the script to the machine (from Linux):
+# 1. From Linux, transfer the full project tarball:
+tar czf /tmp/doom-hpux-project.tar.gz --transform 's|^|doom-hpux/|' src/ doom_build.sh shareware/
 ftp -n 192.168.1.37 <<EOF
 user root hp2000
 binary
-put /tmp/doom_build.sh /tmp/doom_build.sh
+put /tmp/doom-hpux-project.tar.gz /tmp/doom-hpux-project.tar.gz
 quit
 EOF
 
 # 2. On HP-UX:
-chmod +x /tmp/doom_build.sh
-at -f /tmp/doom_build.sh now
-
-# 3. Monitor:
-tail -f /tmp/doom_build.log
-cat /tmp/doom_build.exit   # 0 = success
+cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
+sh /tmp/doom-hpux/doom_build.sh
 ```
 
 ---
@@ -226,8 +218,8 @@ cat /tmp/doom_build.exit   # 0 = success
 **Cause:** `IdentifyVersionByName()` expects a short name like "doom" or "doom2", not a path. If the name is not in its internal list, it ignores the argument and calls `IdentifyVersion()`, which looks for standard WADs in `DOOMWADDIR`.
 **Fix:** Create a symlink with the standard name + `DOOMWADDIR` variable.
 
-### P5: No commercial WAD available
-**Fix:** Use Freedoom Phase 1 (freedoom1.wad), a free WAD compatible with the Doom 1 IWAD format. Downloaded from GitHub releases.
+### P5: No WAD available on the machine
+**Fix:** Transfer the Doom 1 shareware WAD (`doom1.wad`) via FTP.
 
 ### P6: libXmu not in `/usr/lib/X11R6/`
 **Cause:** On this system, `libXmu` is in `/usr/contrib/X11R6/lib/`.

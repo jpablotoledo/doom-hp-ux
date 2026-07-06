@@ -1,7 +1,8 @@
 #!/bin/sh
-# Build script para Doom It Yourself en HP-UX B2000
-# Compila y genera el directorio /opt/doom-hpux con todo lo necesario.
-# Uso: at -f doom_build.sh now
+# Build script for Doom It Yourself on HP-UX B2000
+# Compiles and creates /opt/doom-hpux with everything needed to run.
+# Usage: sh doom_build.sh
+#        at -f doom_build.sh now   (to run detached from terminal)
 trap "" 1 2 15
 
 SCRIPT_DIR=`cd \`dirname $0\` && pwd`
@@ -9,15 +10,23 @@ SRC="$SCRIPT_DIR/src"
 DISTDIR=/opt/doom-hpux
 LOG=/tmp/doom_build.log
 
-echo "=== Compilando Doom para HP-UX ===" > "$LOG"
-echo "Fuentes: $SRC" >> "$LOG"
+> "$LOG"
 
-# Buscar el WAD en el directorio del proyecto o en /tmp
+log() {
+    echo "$1"
+    echo "$1" >> "$LOG"
+}
+
+log "=== Building Doom for HP-UX ==="
+log "Sources: $SRC"
+
+# Search for the WAD in the project directory or /tmp
 WAD_SOURCE=""
 for candidate in \
-    "$SCRIPT_DIR/freedoom1.wad" \
+    "$SCRIPT_DIR/shareware/doom1.wad" \
+    "$SCRIPT_DIR/doom1.wad" \
     "$SCRIPT_DIR/doom.wad" \
-    "/tmp/freedoom1.wad" \
+    "/tmp/doom1.wad" \
     "/tmp/doom.wad"; do
     if [ -f "$candidate" ]; then
         WAD_SOURCE="$candidate"
@@ -26,73 +35,78 @@ for candidate in \
 done
 
 if [ -z "$WAD_SOURCE" ]; then
-    echo "ERROR: No se encontro ningun archivo WAD." >> "$LOG"
-    echo "Coloque freedoom1.wad en el mismo directorio que este script o en /tmp/" >> "$LOG"
-    echo "Descargue Freedoom Phase 1 desde: https://freedoom.github.io" >> "$LOG"
+    log "ERROR: No WAD file found."
+    log "Place doom1.wad in the same directory as this script or in /tmp/"
+    log "Obtain the Doom 1 shareware WAD (doom1.wad) and install it on this machine."
     echo 1 > /tmp/doom_build.exit
     exit 1
 fi
 
-echo "WAD encontrado: $WAD_SOURCE" >> "$LOG"
+log "WAD found: $WAD_SOURCE"
 
-# Copiar simpleAudio.c desde la instalacion de HP-UX (no se distribuye con el repo)
+# Copy simpleAudio.c from the HP-UX installation (not distributed with the repo)
 if [ ! -f "$SRC/simpleAudio.c" ]; then
     if [ -f /opt/audio/src/simpleAudio/simpleAudio.c ]; then
         cp /opt/audio/src/simpleAudio/simpleAudio.c "$SRC/simpleAudio.c"
-        echo "simpleAudio.c copiado desde /opt/audio/src/simpleAudio/" >> "$LOG"
+        log "simpleAudio.c copied from /opt/audio/src/simpleAudio/"
     else
-        echo "ERROR: No se encontro /opt/audio/src/simpleAudio/simpleAudio.c" >> "$LOG"
-        echo "Instale el paquete de audio de HP-UX (AudioDevKit o similar)" >> "$LOG"
+        log "ERROR: /opt/audio/src/simpleAudio/simpleAudio.c not found."
+        log "Install the HP-UX audio package (AudioDevKit or similar)."
         echo 1 > /tmp/doom_build.exit
         exit 1
     fi
 fi
 
-# Compilar
+# Compile
+log ""
+log "=== Cleaning previous objects ==="
 cd "$SRC"
-make clean_hp >> "$LOG" 2>&1
-make hp8 >> "$LOG" 2>&1
-BUILD_RESULT=$?
+make clean_hp 2>&1 | tee -a "$LOG"
 
-if [ $BUILD_RESULT -ne 0 ]; then
-    echo "ERROR: La compilacion fallo. Revise $LOG" >> "$LOG"
-    echo $BUILD_RESULT > /tmp/doom_build.exit
-    exit $BUILD_RESULT
+log ""
+log "=== Compiling ==="
+make hp8 2>&1 | tee -a "$LOG"
+
+if [ ! -f "$SRC/hpdiy8" ]; then
+    log "ERROR: Compilation failed. Check the log above."
+    echo 1 > /tmp/doom_build.exit
+    exit 1
 fi
 
-echo "Compilacion exitosa. Preparando distribucion..." >> "$LOG"
+log ""
+log "=== Compilation successful. Preparing distribution... ==="
 
-# Crear directorio de distribucion
+# Create distribution directory
 rm -rf "$DISTDIR"
 mkdir -p "$DISTDIR"
 
-# Binario con nombre definitivo
+# Binary
 cp "$SRC/hpdiy8" "$DISTDIR/doom-hpux"
 chmod 755 "$DISTDIR/doom-hpux"
+log "Binary copied: $DISTDIR/doom-hpux"
 
-# WAD file (copia completa para que el directorio sea autosuficiente)
+# WAD file (full copy so the directory is self-contained)
 cp "$WAD_SOURCE" "$DISTDIR/doom.wad"
-echo "WAD copiado: $WAD_SOURCE -> $DISTDIR/doom.wad" >> "$LOG"
+log "WAD copied:    $WAD_SOURCE -> $DISTDIR/doom.wad"
 
-# Config file vacio (Doom lo populara con valores por defecto al primer cierre)
+# Empty config file (Doom will populate it with defaults on first exit)
 touch "$DISTDIR/doom.cfg"
 
-# Script de lanzamiento
+# Launch script
 cat > "$DISTDIR/doom.sh" << 'RUNEOF'
 #!/bin/sh
-# Lanzador de Doom para HP-UX
+# Doom launcher for HP-UX
 DOOM_DIR=`dirname $0`
 cd "$DOOM_DIR"
 DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux "$@"
 RUNEOF
 chmod 755 "$DISTDIR/doom.sh"
 
-# Resumen
-echo "" >> "$LOG"
-echo "=== Distribucion lista en: $DISTDIR ===" >> "$LOG"
-ls -la "$DISTDIR" >> "$LOG"
-echo "" >> "$LOG"
-echo "Para jugar, ejecutar desde la terminal CDE:" >> "$LOG"
-echo "  $DISTDIR/doom.sh" >> "$LOG"
+log ""
+log "=== Distribution ready at: $DISTDIR ==="
+ls -la "$DISTDIR" 2>&1 | tee -a "$LOG"
+log ""
+log "To play, run from the CDE terminal:"
+log "  $DISTDIR/doom.sh"
 
 echo 0 > /tmp/doom_build.exit
