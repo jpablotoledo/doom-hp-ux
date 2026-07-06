@@ -40,21 +40,14 @@ Full details in [docs/machine-setup.md](docs/machine-setup.md) and [docs/add-sou
 
 ## WAD
 
-**Freedoom Phase 1** (open-source, replaces Doom 1) is used. Included in the distribution directory as `doom.wad`.
+**Doom 1 shareware** (`doom1.wad`) is used. Included in the distribution directory as `doom.wad`.
 
 ## Build and distribute
 
-### Prerequisite: WAD file
+### WAD file
 
-The game needs a WAD file with game data. It is not included in the repository.
-Download **Freedoom Phase 1** (open-source, free):
-
-```sh
-wget https://github.com/freedoom/freedoom/releases/download/v0.13.0/freedoom-0.13.0.zip
-unzip -p freedoom-0.13.0.zip "*/freedoom1.wad" > freedoom1.wad
-```
-
-Place `freedoom1.wad` in the project root (next to `doom_build.sh`).
+The **Doom 1 shareware** WAD (`shareware/doom1.wad`) is included in the repository -
+the original id Software shareware release, freely distributable. No extra download needed.
 
 ### Compiling on HP-UX
 
@@ -63,7 +56,7 @@ The [`doom_build.sh`](doom_build.sh) script compiles the binary and generates `/
 **Transfer to HP-UX** (from Linux/other Unix):
 
 ```sh
-tar czf /tmp/doom-hpux-project.tar.gz src/ doom_build.sh freedoom1.wad
+tar czf /tmp/doom-hpux-project.tar.gz src/ doom_build.sh shareware/
 ftp -n <hpux-ip> <<EOF
 user root <password>
 binary
@@ -72,22 +65,21 @@ quit
 EOF
 ```
 
-**On HP-UX**, extract and launch the build with `at`
-(`at` is required to survive closing the telnet/ssh session):
+**On HP-UX**, extract and run the build:
 
 ```sh
 # HP-UX tar does not support -z, decompress in two steps
 cd /tmp && gunzip doom-hpux-project.tar.gz && tar xf doom-hpux-project.tar
 
-chmod +x /tmp/doom_build.sh
-at -f /tmp/doom_build.sh now
+sh /tmp/doom-hpux/doom_build.sh
 ```
 
-Monitor progress:
+The script prints compiler output in real time. If you need to run it detached
+(e.g. over telnet), use `at` and monitor the log:
 
 ```sh
+at -f /tmp/doom-hpux/doom_build.sh now
 tail -f /tmp/doom_build.log
-cat /tmp/doom_build.exit   # 0 = success
 ```
 
 ## Result
@@ -95,7 +87,7 @@ cat /tmp/doom_build.exit   # 0 = success
 ```
 /opt/doom-hpux/
 ├── doom-hpux   ← binary (~680 KB)
-├── doom.wad    ← Freedoom Phase 1 (28 MB)
+├── doom.wad    ← Doom 1 shareware (~4 MB)
 ├── doom.cfg    ← config (created on game exit)
 └── doom.sh     ← launch script
 ```

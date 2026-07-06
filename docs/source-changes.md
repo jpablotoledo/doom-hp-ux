@@ -131,7 +131,7 @@ cc -DNORMALUNIX -DDIYINLINE
 ```
 Directory: /opt/doom-hpux/
 ├── doom-hpux     ~680 KB  ← compiled binary (with sound)
-├── doom.wad       28 MB   ← Freedoom Phase 1 v0.13.0
+├── doom.wad        4 MB   ← Doom 1 shareware
 ├── doom.cfg        0 B    ← config (Doom fills it on exit)
 └── doom.sh       ~144 B   ← launch script
 

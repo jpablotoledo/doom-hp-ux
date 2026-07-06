@@ -217,7 +217,7 @@ automáticamente desde `/opt/audio/src/simpleAudio/` durante el build.
 ```
 Directorio: /opt/doom-hpux/
 ├── doom-hpux     ~680 KB  ← binario compilado con sonido
-├── doom.wad       28 MB   ← Freedoom Phase 1 v0.13.0
+├── doom.wad        4 MB   ← shareware Doom 1
 ├── doom.cfg        0 B    ← config (Doom lo rellena al cerrar)
 └── doom.sh       ~144 B   ← script de lanzamiento
 
