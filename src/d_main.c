@@ -49,6 +49,10 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include <fcntl.h>
 #endif
 
+#ifdef __hpux
+#include <signal.h>
+#endif
+
 
 #include "doomdef.h"
 #include "doomstat.h"
@@ -478,11 +482,28 @@ static void D_DoomLoop (void)
 #else
 #ifndef SNDINTR
 #ifndef SNDSERV
+#ifdef __hpux
+	/* HP-UX also feeds audio from a SIGALRM timer (see
+	 * I_HPStartAudioTimer in i_sound.c) so it stays on schedule even
+	 * when this loop iteration (render) takes far longer than a game
+	 * tic. I_HPAudioTick() is a shared, syscall-free-guarded entry
+	 * point used by both this call and the timer — see i_sound.c. An
+	 * earlier version wrapped direct I_UpdateSound()/I_SubmitSound()
+	 * calls here with sigprocmask() to avoid racing the timer; this
+	 * D_DoomLoop() while(1) has no frame cap and can spin thousands of
+	 * times/sec on light frames, and those 2 extra syscalls/iteration
+	 * measured live via vmstat at ~50-60k syscalls/sec and ~0% idle
+	 * CPU — the actual cause of a regression that looked like an
+	 * audio/render stall but was really syscall overhead we
+	 * introduced. */
+	I_HPAudioTick();
+#else
 	/* Sound mixing for the buffer is snychronous.*/
 	I_UpdateSound();
-#endif
 	/* Update sound output.*/
 	I_SubmitSound();
+#endif	/* __hpux */
+#endif
 #endif	/* SNDINTR */
 #endif	/* __riscos__ */
     }

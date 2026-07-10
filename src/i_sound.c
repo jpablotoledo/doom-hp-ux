@@ -70,6 +70,11 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+/* In-process OPL2/GENMIDI synth — no separate process, no pipe. See
+ * hp_music.c for why: a second process, even a cheap one, introduced
+ * enough scheduling/IPC latency on this single-core machine to still
+ * audibly stutter whenever Doom's own render loop was busy. */
+#include "hp_music.h"
 #endif
 
 /* Timer stuff. Experimental.*/
@@ -195,64 +200,6 @@ static int	channelBase = 1;
 #else
 /* The actual output device.*/
 static int	audio_fd;
-/* HP-UX: read end of musserver stdout pipe for music PCM mixing. -1 = not open. */
-#ifdef __hpux
-static int      mus_pipe_read = -1;
-
-/* Ring buffer decoupling music-pipe reads from the Aserver write throttle.
- * Previously the pipe was only read from inside the throttled block, so
- * whenever Doom was waiting on Aserver (>=2 buffers queued), it also
- * stopped draining musserver's output pipe entirely. musserver produces
- * audio at its own pace regardless of Doom's throttle state, so the pipe
- * filled up chronically and musserver's own retry queue (32 frames /
- * ~457ms) kept overflowing, permanently dropping ~28% of all frames
- * (confirmed via musserver's dropped/queued stats during live play).
- * Filling this ring on every I_SubmitSound() call — independent of the
- * throttle — lets the pipe drain at musserver's natural production rate;
- * only the final mix-into-Aserver step stays throttled. */
-#define MUSIC_RING_SIZE 4096  /* shorts, stereo interleaved: ~185ms at 11025Hz */
-static short    music_ring[MUSIC_RING_SIZE];
-static int      music_ring_head  = 0;
-static int      music_ring_tail  = 0;
-static int      music_ring_count = 0;
-
-static void music_ring_fill(void)
-{
-  short tmp[1024];
-  if (mus_pipe_read < 0) return;
-  for (;;)
-  {
-    int space = MUSIC_RING_SIZE - music_ring_count;
-    int want = space < 1024 ? space : 1024;
-    ssize_t n;
-    int ns, i;
-    if (want <= 0) break;  /* ring full */
-    n = read(mus_pipe_read, tmp, want * sizeof(short));
-    if (n <= 0) break;     /* EAGAIN or EOF: no more data available now */
-    ns = (int)(n / sizeof(short));
-    for (i = 0; i < ns; i++)
-    {
-      music_ring[music_ring_head] = tmp[i];
-      music_ring_head = (music_ring_head + 1) % MUSIC_RING_SIZE;
-    }
-    music_ring_count += ns;
-  }
-}
-
-/* Pops up to `want` shorts (FIFO order) into dst. Returns count taken. */
-static int music_ring_take(short *dst, int want)
-{
-  int taken = 0;
-  while (taken < want && music_ring_count > 0)
-  {
-    dst[taken] = music_ring[music_ring_tail];
-    music_ring_tail = (music_ring_tail + 1) % MUSIC_RING_SIZE;
-    music_ring_count--;
-    taken++;
-  }
-  return taken;
-}
-#endif
 #endif
 
 
@@ -1066,10 +1013,6 @@ I_SubmitSound(void)
   if (SoundDisabled == 0)
   {
 #ifdef __hpux
-    /* Drain the music pipe every call, independent of the Aserver
-     * throttle below — see music_ring_fill()'s comment for why. */
-    music_ring_fill();
-
     /* Throttle writes: I_SubmitSound is called 35x/sec but UseFrequency is
        11025Hz, so without throttling we write 1.6x faster than playback and
        the Aserver buffer fills up causing growing lag. Track queued samples
@@ -1092,57 +1035,35 @@ I_SubmitSound(void)
       hp_queued -= consumed;
       if (hp_queued < 0) hp_queued = 0;
 
-      {
-        static int dbg_throttled = 0, dbg_read_zero = 0, dbg_read_neg = 0;
-        static int dbg_read_ok = 0, dbg_calls = 0, dbg_nsum = 0;
-        dbg_calls++;
-        if (hp_queued >= 2 * SampleCount) dbg_throttled++;
-        if (dbg_calls >= 700) {
-          fprintf(logfile, "musmix: calls=%d throttled=%d read_ok=%d read_zero=%d read_neg=%d avg_n=%d hp_queued=%d\n",
-                  dbg_calls, dbg_throttled, dbg_read_ok, dbg_read_zero, dbg_read_neg,
-                  dbg_read_ok ? dbg_nsum/dbg_read_ok : 0, hp_queued);
-          fflush(logfile);
-          dbg_calls = dbg_throttled = dbg_read_zero = dbg_read_neg = dbg_read_ok = dbg_nsum = 0;
-        }
-
       if (hp_queued < 2 * SampleCount)
       {
-        /* Mix music PCM from the ring buffer (filled independently above)
-         * into the SFX buffer before output. Rates match on average:
-         * musserver produces ~11025 samples/sec, we consume ~11025
-         * samples/sec (SampleCount * Aserver-write-rate) — the ring just
-         * absorbs the short-term jitter between the two. */
-        if (mus_pipe_read >= 0)
+        /* Generate music directly (in-process synth, no pipe — see
+         * hp_music.c) and mix it into the SFX buffer before output. */
         {
           short music_buf[1024];   /* max SampleCount stereo frames = 512*2 */
-          int taken = music_ring_take(music_buf, (int)(MixBufferSize / sizeof(short)));
-          ssize_t n = (ssize_t)(taken * sizeof(short));
-          if (n == 0) dbg_read_zero++;
-          else { dbg_read_ok++; dbg_nsum += (int)n; }
-          if (n > 1)
+          int ns = (int)(MixBufferSize / sizeof(short));
+          signed short *mp = music_buf;
+          signed short *sp = mixbuffer;
+          signed short *end = mixbuffer + ns;
+
+          HPMusic_Generate(music_buf, ns / 2);
+          while (sp < end)
           {
-            int ns = (int)(n / sizeof(short));
-            signed short *mp = music_buf;
-            signed short *sp = mixbuffer;
-            signed short *end = mixbuffer + ns;
-            while (sp < end)
-            {
-              int a = (int)*sp;
-              int b = (int)*mp;
-              int v;
-              /* Virtual-analog mix: compress same-sign pairs toward 0.
-               * Both-pos: subtract a*b/MAX. Both-neg: add (works on magnitudes).
-               * Different signs: simple sum (guaranteed within range). */
-              if (a >= 0 && b >= 0)
-                v = a + b - (int)((long)a * b / 32767);
-              else if (a < 0 && b < 0) {
-                int na = -a, nb = -b;
-                v = -(na + nb - (int)((long)na * nb / 32767));
-              } else
-                v = a + b;
-              *sp = (signed short)v;
-              sp++; mp++;
-            }
+            int a = (int)*sp;
+            int b = (int)*mp;
+            int v;
+            /* Virtual-analog mix: compress same-sign pairs toward 0.
+             * Both-pos: subtract a*b/MAX. Both-neg: add (works on magnitudes).
+             * Different signs: simple sum (guaranteed within range). */
+            if (a >= 0 && b >= 0)
+              v = a + b - (int)((long)a * b / 32767);
+            else if (a < 0 && b < 0) {
+              int na = -a, nb = -b;
+              v = -(na + nb - (int)((long)na * nb / 32767));
+            } else
+              v = a + b;
+            *sp = (signed short)v;
+            sp++; mp++;
           }
         }
 
@@ -1150,31 +1071,7 @@ I_SubmitSound(void)
           int wret = write(audio_fd, mixbuffer, MixBufferSize);
           if (wret > 0)
             hp_queued += SampleCount;
-
-          /* Diagnostic capture: dump the EXACT bytes sent to Aserver for
-           * the first ~15s, so we can inspect what's really being played
-           * (as opposed to what our standalone WAV tests produce) without
-           * guessing whether the bug is upstream (synthesis/mixing) or
-           * downstream (Aserver/hardware). */
-          {
-            static FILE *capfp = NULL;
-            static int cap_writes = 0;
-            static int cap_done = 0;
-            if (!cap_done) {
-              if (!capfp) capfp = fopen("/tmp/aserver_capture.raw", "wb");
-              if (capfp) {
-                fwrite(mixbuffer, 1, MixBufferSize, capfp);
-                cap_writes++;
-                if (cap_writes >= 320) {  /* ~15s at ~21.5 writes/sec */
-                  fflush(capfp);
-                  fclose(capfp);
-                  cap_done = 1;
-                }
-              }
-            }
-          }
         }
-      }
       }
     }
 #else
@@ -1185,6 +1082,99 @@ I_SubmitSound(void)
 #endif
 #endif
 }
+
+#ifdef __hpux
+/* Real-time-independent audio feeding: on real hardware, Doom's own
+ * render loop is already CPU-bound (~85% of this machine's single core
+ * with no music at all), so I_UpdateSound()/I_SubmitSound() called only
+ * once per game-loop iteration (as d_main.c does below) get invoked
+ * irregularly under load — often much less than the ~35/sec the audio
+ * pipeline assumes. When that happens Aserver's own buffer runs dry
+ * between calls and the output audibly cuts.
+ *
+ * This mirrors why the original SFX throttle (docs/agregar-sonido.md)
+ * was needed — writing too FAST overran Aserver — except this is the
+ * mirror-image problem: writing too INFREQUENTLY underruns it. The
+ * codebase already had a generic answer for exactly this (the SNDINTR
+ * timer-interrupt scaffolding further down), but it was never wired up
+ * for HP-UX, and its handler predates the music work so it would
+ * silently bypass all of it. This installs an equivalent real
+ * SIGALRM/setitimer interrupt that calls our already-validated
+ * I_UpdateSound()+I_SubmitSound() on a fixed schedule, independent of
+ * how long the current render frame is taking. d_main.c blocks SIGALRM
+ * around its own (still-present) synchronous calls to avoid the two
+ * ever truly overlapping.
+ *
+ * This alone wasn't enough while music ran in a separate process
+ * (musserver-hpux, talking to Doom over a pipe): even a cheap child
+ * process introduced enough inter-process scheduling/IPC latency to
+ * keep stuttering under load, confirmed by a raw capture of Aserver's
+ * input showing the synth itself was never the bottleneck. hp_music.c
+ * replaces that with an in-process synth called directly from
+ * I_SubmitSound() below — no process boundary left to schedule around. */
+/* Shared, syscall-free reentrancy guard between the SIGALRM handler and
+ * the main loop's own direct call (d_main.c) — both go through this
+ * instead of calling I_UpdateSound()/I_SubmitSound() themselves, so
+ * whichever gets there first wins and the other just skips that one
+ * cycle. sig_atomic_t is safe to read/write from a signal handler
+ * without a lock. This replaces an earlier sigprocmask()-based version:
+ * that blocked/unblocked SIGALRM around every single main-loop call,
+ * which is fine at 35 calls/sec but this D_DoomLoop() while(1) has no
+ * frame cap and can spin thousands of times/sec on light frames —
+ * measured live via vmstat, the two extra syscalls/iteration pushed the
+ * machine to ~50-60k syscalls/sec and ~0% idle CPU, which was the
+ * actual cause of a regression that looked like an audio/render stall. */
+static volatile sig_atomic_t hp_audio_busy = 0;
+
+void I_HPAudioTick(void)
+{
+  if (hp_audio_busy) return;
+  hp_audio_busy = 1;
+  I_UpdateSound();
+  I_SubmitSound();
+  hp_audio_busy = 0;
+}
+
+static void hp_audio_timer_handler(int signum)
+{
+  signum = 0;
+  I_HPAudioTick();
+}
+
+void I_HPStartAudioTimer(void)
+{
+  struct sigaction act;
+  struct itimerval value;
+  int interval_us;
+
+  if (SoundDisabled) return;
+
+  memset(&act, 0, sizeof(act));
+  act.sa_handler = hp_audio_timer_handler;
+  act.sa_flags = SA_RESTART;
+  sigemptyset(&act.sa_mask);
+  sigaddset(&act.sa_mask, SIGALRM);
+  sigaction(SIGALRM, &act, NULL);
+
+  /* Same interval formula as the Sun/HP branch of the generic SNDINTR
+   * timer further down: slightly under 100% of buffer playtime so we
+   * feed Aserver a bit ahead of when it needs the next chunk. */
+  interval_us = (int)((950000L * SampleCount) / UseFrequency);
+  value.it_interval.tv_sec  = 0;
+  value.it_interval.tv_usec = interval_us;
+  value.it_value.tv_sec  = 0;
+  value.it_value.tv_usec = interval_us;
+  setitimer(ITIMER_REAL, &value, NULL);
+  fprintf(logfile, "I_HPStartAudioTimer: %d microsecs\n", interval_us);
+}
+
+void I_HPStopAudioTimer(void)
+{
+  struct itimerval value;
+  memset(&value, 0, sizeof(value));
+  setitimer(ITIMER_REAL, &value, NULL);
+}
+#endif
 
 
 
@@ -1229,6 +1219,10 @@ void I_ShutdownSound(void)
 
 #ifdef SNDINTR
   I_SoundDelTimer();
+#endif
+
+#ifdef __hpux
+  I_HPStopAudioTimer();
 #endif
 
 #ifdef __riscos__
@@ -1409,11 +1403,6 @@ I_InitSound(void)
       return;
     }
     fcntl(audio_fd, F_SETFL, fcntl(audio_fd, F_GETFL) | O_NONBLOCK);
-    /* Close-on-exec: prevent musserver (launched later via popen) from
-     * inheriting this fd.  Without this the child has a live copy of
-     * Doom's audio socket, which can confuse Aserver when musserver
-     * calls openAudio() to open its own stream. */
-    fcntl(audio_fd, F_SETFD, FD_CLOEXEC);
     fprintf(logfile, "using HP Alib 16bit linear stereo; ");
 #else
     audio_fd = open("/dev/dsp", O_WRONLY);
@@ -1510,6 +1499,11 @@ I_InitSound(void)
     I_SoundSetTimer( sound_interval );
 #endif
 
+#ifdef __hpux
+    if (!M_CheckParm("-notimer"))
+      I_HPStartAudioTimer();
+#endif
+
     /* Finished initialization.*/
     fprintf(logfile, "I_InitSound: sound module ready\n");
   }
@@ -1522,6 +1516,137 @@ I_InitSound(void)
 
 
 /* MUSIC API.*/
+
+#ifdef __hpux
+
+static int nomusic = 0;
+static int looping = 0;
+
+void I_InitMusic(void)
+{
+  int genmidi_lump;
+
+  if (M_CheckParm("-nomusic"))
+  {
+    nomusic = 1;
+    return;
+  }
+
+  genmidi_lump = W_CheckNumForName("GENMIDI");
+  if (genmidi_lump < 0)
+  {
+    fprintf(logfile, "I_InitMusic: missing GENMIDI lump!\n");
+    nomusic = 1;
+    return;
+  }
+
+  {
+    int genmidi_len = W_LumpLength(genmidi_lump);
+    const byte *genmidi_data = W_CacheLumpNum(genmidi_lump, PU_CACHE);
+    HPMusic_Init(genmidi_data, genmidi_len);
+  }
+
+  if (!HPMusic_GenMidiOk())
+  {
+    fprintf(logfile, "I_InitMusic: GENMIDI init failed\n");
+    nomusic = 1;
+    return;
+  }
+
+  fprintf(logfile, "I_InitMusic: in-process OPL2 synth ready\n");
+}
+
+void I_ShutdownMusic(void)
+{
+  HPMusic_Stop();
+}
+
+void I_SetMusicVolume(int volume)
+{
+  snd_MusicVolume = volume;
+  /* Doom's volume range is 0-15 (S_MAX_VOLUME); passed straight through. */
+  HPMusic_SetVolume(volume);
+}
+
+void I_PlaySong(int handle, int loop)
+{
+  handle = 0;
+  if (nomusic) return;
+  looping = loop;
+  HPMusic_Play(loop);
+}
+
+void I_PauseSong(int handle)
+{
+  handle = 0;
+  if (nomusic) return;
+  HPMusic_Pause();
+}
+
+void I_ResumeSong(int handle)
+{
+  handle = 0;
+  if (nomusic) return;
+  HPMusic_Resume();
+}
+
+void I_StopSong(int handle)
+{
+  handle = 0;
+  looping = 0;
+  if (nomusic) return;
+  HPMusic_Stop();
+}
+
+void I_UnRegisterSong(int handle)
+{
+  handle = 0;
+}
+
+int I_RegisterSong(void *data, int length)
+{
+  /* Parse MUS header using byte access (avoids packed struct issues on
+   * HP C in -Aa mode). MUS header layout (little-endian):
+   *   [0-3] sig "MUS\x1A"  [4-5] scorelen  [6-7] scorestart
+   *   [8-9] channels  [10-11] sec_channels  [12-13] instrumentcount
+   */
+  unsigned char *hdr = (unsigned char *)data;
+  unsigned short scorelen, scorestart;
+  int mus_len;
+
+  if (nomusic) return 0;
+  if (length < 16) return 0;
+
+  scorelen   = (unsigned short)(hdr[4] | (hdr[5] << 8));
+  scorestart = (unsigned short)(hdr[6] | (hdr[7] << 8));
+  mus_len = (int)scorestart + (int)scorelen;
+
+  if (mus_len < length)
+  {
+    /* Excess trailing data in the lump (Gady Kozma fix): correct the
+     * header's scorelen so the parser reads all of it. */
+    scorelen += (unsigned short)(length - mus_len);
+    hdr[4] = (unsigned char)(scorelen & 0xFF);
+    hdr[5] = (unsigned char)((scorelen >> 8) & 0xFF);
+    mus_len = length;
+  }
+  else if (mus_len > length)
+  {
+    fprintf(logfile, "I_RegisterSong: incomplete MUS lump (%d < %d)\n", length, mus_len);
+    return 0;
+  }
+
+  HPMusic_LoadSong(hdr, mus_len, looping);
+  return 1;
+}
+
+int I_QrySongPlaying(int handle)
+{
+  handle = 0;
+  return HPMusic_IsPlaying();
+}
+
+#else /* !__hpux : original MUSSERV-protocol external process */
 
 static FILE *musserver = NULL;
 static int nomusic = 0;
@@ -1549,63 +1674,6 @@ void I_InitMusic (void)
   signal (SIGCHLD, I_AbortMusic);
   signal (SIGPIPE, SIG_IGN);
 
-#ifdef __hpux
-  /* HP-UX: fork/exec with two pipes so musserver writes PCM to its stdout
-   * (our read pipe) instead of opening its own Aserver connection.
-   * This keeps a single Aserver stream (Doom's audio_fd) and avoids the
-   * Aserver stream-exclusivity problem that would silence all SFX. */
-  {
-    int cmd_pipe[2], mus_pipe[2];
-    pid_t mus_pid;
-
-    if (pipe(cmd_pipe) != 0 || pipe(mus_pipe) != 0)
-    {
-      printf ("I_InitMusic: pipe() failed\n");
-      nomusic = 1;
-      return;
-    }
-    mus_pid = fork();
-    if (mus_pid < 0)
-    {
-      printf ("I_InitMusic: fork() failed\n");
-      close(cmd_pipe[0]); close(cmd_pipe[1]);
-      close(mus_pipe[0]); close(mus_pipe[1]);
-      nomusic = 1;
-      return;
-    }
-    if (mus_pid == 0)
-    {
-      /* child: stdin=commands from Doom, stdout=music PCM to Doom */
-      close(cmd_pipe[1]);
-      close(mus_pipe[0]);
-      dup2(cmd_pipe[0], 0);
-      dup2(mus_pipe[1], 1);
-      close(cmd_pipe[0]);
-      close(mus_pipe[1]);
-      /* Pass "1" so musserver uses fd 1 (stdout) for audio output
-       * instead of opening its own Aserver connection. */
-      execl(MUSSERV, MUSSERV, "1", NULL);
-      _exit(1);
-    }
-    /* parent */
-    close(cmd_pipe[0]);
-    close(mus_pipe[1]);
-    mus_pipe_read = mus_pipe[0];
-    fcntl(mus_pipe_read, F_SETFL,
-          fcntl(mus_pipe_read, F_GETFL) | O_NONBLOCK);
-    musserver = fdopen(cmd_pipe[1], "w");
-    if (!musserver)
-    {
-      printf ("I_InitMusic: fdopen() failed\n");
-      close(cmd_pipe[1]);
-      close(mus_pipe_read);
-      mus_pipe_read = -1;
-      kill(mus_pid, SIGTERM);
-      nomusic = 1;
-      return;
-    }
-  }
-#else
   musserver = popen (MUSSERV, "w");
   if (!musserver)
   {
@@ -1613,7 +1681,6 @@ void I_InitMusic (void)
     nomusic = true;
     return;
   }
-#endif
 
   genmidi_lump = W_CheckNumForName ("GENMIDI");
   if (genmidi_lump < 0)
@@ -1653,9 +1720,6 @@ void I_ShutdownMusic(void)
   {
     fputc('Q', musserver);
     fflush_musserver ();
-#ifdef __hpux
-    if (mus_pipe_read >= 0) { close(mus_pipe_read); mus_pipe_read = -1; }
-#endif
     wait (NULL);
   }
 #endif
@@ -1802,6 +1866,7 @@ int I_QrySongPlaying(int handle)
   handle = 0;
   return looping || musicdies > gametic;
 }
+#endif /* __hpux */
 
 
 

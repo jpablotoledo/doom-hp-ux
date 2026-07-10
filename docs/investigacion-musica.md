@@ -219,15 +219,142 @@ completo, con ambos fixes, es reconocible como música real de Doom
 Los WAV de cada iteración de esta sesión quedaron en `test_audio/loop/`
 (archivos `01_...` a `06_e1m1_tempo_and_genmidi_fixed.wav`) como referencia.
 
-## 7. Estado de la decisión
+## 7. Extensión de la validación aislada: percusión y más canciones
 
-**Síntesis aislada: resuelta y validada en el hardware real.** Con los dos
-fixes de la sección 6, `opl2test_nuked.c` reproduce música reconocible de
-Doom sin pasar por el juego. Sigue pendiente extender la validación a más
-instrumentos (percusión, índices 128-174) y más canciones antes de retomar
-la integración con Doom (pipe → ring buffer → mezcla → Aserver, la etapa que
-en el intento anterior (`adding-music`, archivo `14_..._after_ringbuffer_fix.wav`)
-mostraba degradación) — que además debería beneficiarse de estos mismos dos
-fixes, no solo del emulador en sí. Cuando se retome la integración, hay que
-verificar si esa etapa tiene bugs propios además de los ya heredados y
-corregidos aquí.
+Con los dos fixes de la sección 6 aplicados, se probó además:
+
+- Barrido de percusión (índices GENMIDI 128-174, los 47 sonidos de batería/
+  platillos/etc. mapeados por nota fija en canal MIDI 15): confirmado por
+  oído ("suena muy bien").
+- `D_E1M8` (la pista más larga/densa del shareware, buena prueba de estrés
+  de polifonía): confirmado por oído, tonal y sin clipping.
+
+Con esto, la síntesis aislada quedó completamente validada: tempo, estructura
+GENMIDI, instrumentos melódicos, percusión y canciones completas.
+
+## 8. Integración con Doom: de "funciona pero se corta" a resuelto
+
+### 8.1 Primer intento: portar los fixes a `musserver_hpux.c` (arquitectura de proceso separado)
+
+Se trajeron `musserver_hpux.c`, `i_sound.c` y el target de Makefile del commit
+`974a77b` (arquitectura original de `adding-music`: Doom hace `fork()` +
+pipes hacia un proceso `musserver-hpux` separado que sintetiza y envía PCM
+de vuelta). Se le aplicaron los mismos dos fixes de la sección 6 (tempo
+140Hz, estructura GENMIDI de 36 bytes) al sintetizador OPL2 casero de
+`musserver_hpux.c` (nota: ese sintetizador casero, no Nuked-OPL2 — un
+comentario del propio código explica que Nuked-OPL2 dentro del servidor en
+vivo llegó a consumir ~84% de CPU, inviable junto al ~85% que ya usa el
+render de Doom solo).
+
+Compilado y probado en un directorio de pruebas separado (`/tmp/doombuild-test`
+en el B2000, sin tocar `/opt/doom-hpux` de producción) vía el mismo ciclo
+telnet/FTP/`at`. Resultado escuchado en vivo en la máquina: **ya es música
+real**, pero el juego "tiende a pegarse" y la música se entrecorta.
+
+### 8.2 Diagnóstico de la traba: buffer, no CPU del sintetizador
+
+Perfilado de CPU en vivo (`ps -eo pid,pcpu,comm` muestreado cada segundo)
+durante 20s de juego mostró: `musserver-hpux` se estabiliza en **menos del
+1% de CPU**; `doom-hpux` sube solo él a ~18-19% acumulado en el mismo lapso
+— consistente con que el render del juego ya era pesado antes de agregar
+música. El log de `musserver` mostraba una tasa de descarte de frames
+creciente y alta (`dropped` subiendo sin techo). Conclusión: Doom no
+drenaba el pipe de música con la regularidad necesaria porque su propio
+bucle de render, ya sobrecargado, no llamaba a `I_SubmitSound()` (que
+drena el pipe) con la frecuencia asumida.
+
+Se agrandó el ring buffer de música (`MUSIC_RING_SIZE` en `i_sound.c`) de
+~185ms → ~3s → ~12s. Verificado con capturas reales de lo que se envía a
+Aserver (`/tmp/aserver_capture.raw`, volcado por el propio `i_sound.c`
+durante los primeros ~15s, convertido a WAV localmente respetando el
+big-endian de PA-RISC): los cortes bajaron de 24,2% → 4,4% del audio, pero
+agrandar más el buffer dejó de ayudar (techo). Aislando con `-warp 1 1`
+(arranca directo en E1M1, sin cambios de canción, que es donde se
+concentraba la mayoría de los descartes) el nivel de corte ya rozaba el
+**silencio natural de la propia partitura** (7,0% medido en la referencia
+limpia validada en la sección 6, contra 6,1-8,8% medido en vivo según la
+corrida) — es decir, el pipeline ya estaba prácticamente al límite de lo
+que un buffer más grande podía arreglar.
+
+### 8.3 Timer real (SIGALRM/setitimer) para desacoplar el audio del render
+
+Se activó un timer de sistema operativo real, análogo al mecanismo genérico
+`SNDINTR` que ya existía en el código para otras plataformas (nunca
+habilitado para HP-UX) pero adaptado para no pisar el trabajo de música ya
+hecho: `I_HPStartAudioTimer()`/`I_HPStopAudioTimer()` en `i_sound.c`
+instalan un `SIGALRM` periódico que llama a `I_UpdateSound()` +
+`I_SubmitSound()` directamente, sin depender de que el bucle principal del
+juego los invoque a tiempo. `d_main.c` bloquea `SIGALRM` con `sigprocmask`
+alrededor de sus propias llamadas síncronas para que nunca se solapen con
+el timer. Esto mejoró aún más los números del pipe (`dropped` bajó a 3-4,
+prácticamente el mínimo posible) pero el usuario seguía escuchando cortes
+en vivo.
+
+### 8.4 Refactor final: sintetizador en proceso, sin fork/pipe (`hp_music.c`)
+
+Ante la duda razonable de "¿esta máquina realmente no puede reproducir
+música mientras corre el juego?", se reconsideró la arquitectura de fondo:
+`musserver-hpux` corría como **proceso separado** — aunque su cómputo es
+barato (<1% CPU), el *costo de comunicación entre procesos* (fork, pipes,
+esperar a que el scheduler del SO le dé tiempo a un segundo proceso) en una
+máquina de un solo núcleo puede pesar más que la síntesis en sí.
+
+Se creó `src/hp_music.c` (+ `hp_music.h`): el mismo motor de síntesis OPL2 y
+parser MUS de `musserver_hpux.c` (con los fixes de tempo/GENMIDI ya
+incluidos), pero reestructurado de un modelo "push a un pipe" a un modelo
+"generar N muestras bajo demanda" (`HPMusic_Generate(buf, n)`), llamado como
+una función común directamente desde `I_SubmitSound()` — sin `fork()`, sin
+`pipe()`, sin `popen()`, sin segundo proceso que el sistema operativo tenga
+que planificar. `i_sound.c` se reescribió para que `I_InitMusic`/
+`I_PlaySong`/`I_RegisterSong`/etc. llamen directamente a `HPMusic_*` en vez
+de mandar comandos de texto por un pipe. El target `musserver_hp` y el flag
+`-DMUSSERV=...` se eliminaron del `Makefile` (ya no se usan en HP-UX).
+
+Nota de implementación: como `I_SubmitSound()` ahora puede ejecutarse
+dentro de un manejador de señal real (`SIGALRM`), el volcado de diagnóstico
+a `/tmp/aserver_capture.raw` se reescribió usando `open()`/`write()`/
+`close()` en crudo en vez de `fopen()`/`fwrite()` — las funciones de stdio
+no son seguras de usar dentro de una señal (`fprintf` ya no aparece en
+ningún punto de la ruta caliente de audio, se verificó explícitamente).
+
+Compilado y probado igual que los pasos anteriores: sin errores. La captura
+real de Aserver con esta arquitectura dio **6,7% de silencio — prácticamente
+igual al 7,0% intrínseco de la partitura**. A nivel de señal, el pipeline de
+audio ya no tiene margen de mejora relevante.
+
+### 8.5 Conclusión: la traba es preexistente al trabajo de música
+
+El usuario reportó que, aun con esta arquitectura, seguía escuchando cortes
+en vivo. Se hizo la prueba decisiva: correr el mismo nivel **sin música**
+(`-nomusic`) y comparar. Resultado: **el juego se traba exactamente igual
+sin música**, y la traba persiste incluso reduciendo la resolución en
+pantalla. Esto confirma que la traba/corte percibido **no tiene relación
+con el trabajo de música de esta sesión** — es una característica de
+rendimiento preexistente del motor de Doom en este hardware específico (ya
+se sabía por `docs/machine-setup.md` que el render solo, sin ningún audio,
+corre al ~85% de CPU en esta máquina). Cualquier trabajo futuro sobre esa
+traba es un problema de rendimiento general del motor/hardware, separado
+del alcance de esta investigación.
+
+## 9. Estado final
+
+**Música funcionando correctamente, arquitectura definitiva: sintetizador
+OPL2/GENMIDI en proceso (`hp_music.c`), sin proceso externo, alimentado por
+un timer real independiente del render.** Validado por oído en el hardware
+real: tempo correcto, instrumentos reconocibles, percusión, canciones
+completas. La sensación de "traba" que persiste es un problema de
+rendimiento general de Doom en esta máquina, no de la música — confirmado
+reproduciendo sin música y viendo la misma traba.
+
+Archivos clave de la implementación final:
+- `src/hp_music.c` / `src/hp_music.h` — sintetizador OPL2/parser MUS en
+  proceso.
+- `src/i_sound.c` — Music API (`I_InitMusic` etc.) llamando a `HPMusic_*`;
+  timer `SIGALRM`/`setitimer` (`I_HPStartAudioTimer`/`I_HPStopAudioTimer`).
+- `src/d_main.c` — bloqueo de `SIGALRM` alrededor de las llamadas
+  síncronas a `I_UpdateSound()`/`I_SubmitSound()` del bucle principal.
+- `src/Makefile` — `hp_music.o` agregado al build; target `musserver_hp` y
+  flag `-DMUSSERV` eliminados (ya no aplican).
+
+Pendiente (fuera del alcance de esta investigación): investigar el
+rendimiento general del motor en este hardware, independiente del audio.

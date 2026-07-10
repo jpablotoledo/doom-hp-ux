@@ -27,11 +27,9 @@ SUNFLAGS = COMPFLAGS='$(SUNOPT) -D__BIG_ENDIAN__ -DDIYNOSHORT -I/usr/demo/SOUND/
 	LDFLAGS='-L/usr/local/DIR/X11/R6/lib -lX11 -lXext -lICE -lXmu' \
 	LIBS='$(BASELIBS) -lXext -lICE -lsocket -lnsl -L/usr/demo/SOUND/lib -laudio -lm'
 
-HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include -DMUSSERV=\"/opt/doom-hpux/musserver-hpux\" $(DBGFLAG) $$(SPECIALFLAGS)' \
+HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG) $$(SPECIALFLAGS)' \
 	LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -L/opt/audio/lib -lX11 -lXext -lICE -lXmu -lAlib -lAt' \
 	LIBS='$(BASELIBS) -lm'
-
-HPMUSFLAGS = +O2 +e -Aa -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include
 
 LINUXFLAGS = CC=gcc COMPFLAGS='-O3 -fwritable-strings $(LINBASEFLAGS) $(DBGFLAG) $$(SPECIALFLAGS)' \
 	LDFLAGS='$(LINBASELINK)' LIBS='$(BASELIBS) -lm'
@@ -136,7 +134,8 @@ OBJS=	$(OBJPATH)doomdef.o \
 	$(OBJPATH)dehacked.o \
 	$(OBJPATH)i_net.o \
 	$(OBJPATH)i_sound.o \
-	$(OBJPATH)simpleAudio.o
+	$(OBJPATH)simpleAudio.o \
+	$(OBJPATH)hp_music.o
 
 
 
@@ -189,10 +188,6 @@ sun32rt:
 	make $(SUNFLAGS) OBJPATH=objects_sun32rt/ SPECIALFLAGS='$(DIYFLAGS32RT)' doomengine
 	mv doomengine sundiy32rt
 
-
-musserver_hp:
-	$(CC) $(HPMUSFLAGS) musserver_hpux.c simpleAudio.c -o musserver-hpux \
-		-L/opt/audio/lib -lAlib -lAt -lm
 
 hp8:
 	make $(HPFLAGS) OBJPATH=objects_hp8/ doomengine
@@ -354,6 +349,9 @@ $(OBJPATH)i_sound.o:	i_sound.c \
 
 $(OBJPATH)simpleAudio.o:	simpleAudio.c simpleAudio.h
 	$(CC) $(CFLAGS) -I/opt/audio/include -c -o $(OBJPATH)simpleAudio.o simpleAudio.c
+
+$(OBJPATH)hp_music.o:	hp_music.c hp_music.h
+	$(CC) $(CFLAGS) -c -o $(OBJPATH)hp_music.o hp_music.c
 
 $(OBJPATH)i_system.o:	i_system.c \
 	 d_event.h d_items.h d_net.h d_player.h d_think.h d_ticcmd.h doomdata.h doomdef.h doomstat.h doomtype.h g_game.h i_sound.h i_system.h i_video.h i_net.h info.h m_fixed.h m_misc.h p_mobj.h p_pspr.h sounds.h tables.h 
