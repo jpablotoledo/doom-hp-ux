@@ -27,9 +27,11 @@ SUNFLAGS = COMPFLAGS='$(SUNOPT) -D__BIG_ENDIAN__ -DDIYNOSHORT -I/usr/demo/SOUND/
 	LDFLAGS='-L/usr/local/DIR/X11/R6/lib -lX11 -lXext -lICE -lXmu' \
 	LIBS='$(BASELIBS) -lXext -lICE -lsocket -lnsl -L/usr/demo/SOUND/lib -laudio -lm'
 
-HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG) $$(SPECIALFLAGS)' \
+HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include -DMUSSERV=\"/opt/doom-hpux/musserver-hpux\" $(DBGFLAG) $$(SPECIALFLAGS)' \
 	LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -L/opt/audio/lib -lX11 -lXext -lICE -lXmu -lAlib -lAt' \
 	LIBS='$(BASELIBS) -lm'
+
+HPMUSFLAGS = +O2 +e -Aa -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include
 
 LINUXFLAGS = CC=gcc COMPFLAGS='-O3 -fwritable-strings $(LINBASEFLAGS) $(DBGFLAG) $$(SPECIALFLAGS)' \
 	LDFLAGS='$(LINBASELINK)' LIBS='$(BASELIBS) -lm'
@@ -187,6 +189,10 @@ sun32rt:
 	make $(SUNFLAGS) OBJPATH=objects_sun32rt/ SPECIALFLAGS='$(DIYFLAGS32RT)' doomengine
 	mv doomengine sundiy32rt
 
+
+musserver_hp:
+	$(CC) $(HPMUSFLAGS) musserver_hpux.c simpleAudio.c -o musserver-hpux \
+		-L/opt/audio/lib -lAlib -lAt -lm
 
 hp8:
 	make $(HPFLAGS) OBJPATH=objects_hp8/ doomengine
