@@ -358,3 +358,197 @@ Archivos clave de la implementación final:
 
 Pendiente (fuera del alcance de esta investigación): investigar el
 rendimiento general del motor en este hardware, independiente del audio.
+
+## 10. Investigación del "chirrido" residual (sesión de optimización de CPU)
+
+Tras el trabajo de optimización de CPU (`+O3 +DA2.0 +DS2.0 +Ofastaccess`,
+ver `docs/investigacion-rendimiento-cpu.md`), con las trabas del motor ya
+muy reducidas, el usuario reportó un problema distinto y hasta entonces
+enmascarado por las trabas: un **chirrido** intermitente en la música de
+E1M1 ("como cuando un parlante está suelto o haciendo mal contacto"),
+inicialmente confundido con las trabas del motor (sección 8.5) pero
+identificado como un problema real de la síntesis una vez que el juego
+dejó de trabarse.
+
+### 10.1 Metodología: aislar síntesis de tiempo real
+
+Para responder "¿el ruido viene de correr el juego o de la implementación
+de instrumentos?" se construyó un **renderizador offline** (no forma parte
+del build de Doom, vive solo como herramienta de diagnóstico de sesión):
+carga los lumps `GENMIDI` y una canción `MUS` directamente de
+`shareware/doom1.wad`, y llama a `HPMusic_Init`/`HPMusic_LoadSong`/
+`HPMusic_Generate` — el mismo código que corre en el juego — para escribir
+un `.wav`, sin motor de Doom, sin timer `SIGALRM`, sin restricciones de
+tiempo real. Cualquier ruido que aparezca ahí es un bug de la síntesis en
+sí, no de cómo se integra con el juego.
+
+Con esa herramienta se generaron varios `.wav` de prueba (carpeta
+`test_audio/loop/`, archivos `14` a `18`) que el usuario escuchó
+directamente y usó para localizar los problemas por oído y, en un caso
+clave, inspeccionando la forma de onda en Audacity.
+
+También se usó `opl2test_nuked.c` + `opl2.c` (Nuked-OPL2-Lite, emulador
+cycle-accurate validado contra hardware YM3812 real, ver sección 5) como
+**referencia de verdad**: renderizar el mismo instrumento/nota con el
+sintetizador casero y con Nuked-OPL2 y comparar permitió distinguir "esto
+sí sucede en hardware real" de "esto es un bug de nuestra síntesis".
+
+### 10.2 Bug: mapeo de percusión MUS incorrecto
+
+El canal 15 de MUS (percusión) mapeaba el "key" del evento a instrumento
+GENMIDI con `128 + (note & 0x3F)`, clampeando al último instrumento
+(índice 174) si se pasaba de rango. La fórmula real (verificada contra
+`i_oplmusic.c` de Chocolate Doom, función `KeyOnEvent`) es:
+
+```c
+if (key < 35 || key > 81) return;      /* fuera de rango: ignorar la nota */
+instrument = &percussion_instrs[key - 35];
+```
+
+Es decir, rango válido `[35, 81]` (47 sonidos de percusión), índice
+`key - 35`, e **ignorar** (no sonar) cualquier nota fuera de ese rango en
+vez de clampear a un instrumento arbitrario. El bug hacía sonar
+instrumentos de percusión completamente distintos a los que la canción
+pedía. Corregido en `hp_music.c`, función `mus_process_tic()`.
+
+### 10.3 Bug: fórmula de feedback OPL2 incorrecta
+
+El feedback del modulador (registro `fb`, usado por varios instrumentos de
+percusión con `fb=7`, el máximo) se calculaba como el doble de la única
+muestra cruda anterior: `fb_idx = (fb_prev * 2) >> (9 - fb)`. El chip real
+(verificado contra `OPL2_SlotCalcFB()` de Nuked-OPL2) usa la **suma** de
+las dos últimas muestras: `fbmod = (prout + out) >> (9 - fb)`. Duplicar una
+sola muestra amplifica en vez de amortiguar cualquier cambio de signo entre
+muestras consecutivas, lo que con feedback alto puede entrar en oscilación
+descontrolada. Corregido guardando dos muestras anteriores (`fb_prev`,
+`fb_prev2`) y sumándolas. Técnicamente más correcto, aunque en la práctica
+no resultó ser la causa dominante del chirrido para el caso puntual
+investigado (ver 10.4).
+
+### 10.4 Bug real detrás del "hi-hat con estática": aliasing por Nyquist
+
+Aislando el instrumento de percusión 139 (hi-hat abierto, nota fija de
+GENMIDI = 79) se midieron saltos de muestra a muestra de hasta 18516 (57%
+del rango completo) al renderizarlo con el sintetizador casero — algo que
+Nuked-OPL2, rindiendo el mismo instrumento/nota, no mostraba en absoluto
+(máximo 3579). La causa: la nota fija de ese instrumento, con su
+multiplicador (`mult`), da una frecuencia de portadora de **~7840 Hz** —
+muy por encima del límite de Nyquist a la tasa de muestreo de este
+sintetizador (11025 Hz → Nyquist = 5512 Hz). Una frecuencia por encima de
+Nyquist se "pliega" (fold-back aliasing) hacia una frecuencia completamente
+distinta e inarmónica dentro del rango audible.
+
+Hardware real / Nuked-OPL2 no sufren esto porque sintetizan internamente a
+una tasa mucho más alta (~49716 Hz) y remuestrean con un filtro pasa-bajos
+adecuado al bajar a la tasa de salida. Implementar sobremuestreo con
+filtrado aquí habría sido caro en CPU (justamente lo que esta máquina no
+sobra, ver `docs/investigacion-rendimiento-cpu.md`), así que se aplicó un
+límite más barato: acotar la frecuencia máxima representable justo debajo
+de Nyquist en `note_phase_step()` (`freq > SAMPLE_RATE*0.45` se recorta a
+ese valor). El costo es precisión de tono en un puñado de instrumentos de
+percusión extremos (que ya suenan como ruido/timbre metálico por diseño,
+donde el tono exacto es inaudible/intrascendente); el beneficio es
+eliminar por completo el aliasing. Con el fix, los saltos bruscos del
+instrumento 139 en aislamiento pasaron de 70 a 0.
+
+### 10.5 Bug: corte abrupto de envolvente (release/decay lineales)
+
+Inspeccionando la forma de onda en Audacity, el usuario identificó caídas
+verticales duras al final de cada nota — no un problema de instrumento
+sino de la forma en que la amplitud termina. La envolvente de este
+sintetizador es **lineal** (una escala 0-511 restada a ritmo constante por
+muestra), y para tasas de decay/release rápidas (rango 12-15 de la tabla
+`rate_to_inc`, hasta 512 por muestra) puede pasar de amplitud casi máxima a
+cero en **una sola muestra** — un corte instantáneo y audible como un
+"tic". El chip OPL2 real trabaja la envolvente en dominio logarítmico
+(dB), donde el mismo "release rápido" da un decaimiento multiplicativo que
+naturalmente se suaviza al acercarse a cero, sin el filo duro del modelo
+lineal.
+
+En vez de reescribir todo el modelo de envolvente a dominio logarítmico
+(cambio mucho más invasivo para un beneficio acotado), se limitó la
+velocidad máxima de caída de decay y release para que ningún segmento
+pueda completarse en menos de `ENV_REL_MIN_SAMPLES` = 48 muestras (~4.3 ms
+a 11025 Hz) — sigue siendo rápido/imperceptible como un fundido, pero ya
+no es una discontinuidad de una sola muestra. Nueva función
+`rate_to_inc_release()` usada tanto para `env_dec` como `env_rel` del
+modulador y la portadora.
+
+### 10.6 Bug: sesgo DC (asimetría de forma de onda)
+
+El usuario notó, mirando la forma de onda en Audacity, que la señal
+mezclada estaba mayormente en la mitad positiva del eje Y en vez de
+oscilar simétricamente. Varias formas de onda del OPL2 (`opl_wave()` casos
+1-3: seno recortado, seno rectificado completo, cuarto de seno) son, **por
+diseño del chip**, asimétricas — su promedio no es cero (esto es
+intencional, parte del timbre de instrumentos con distorsión/borde, como
+la guitarra distorsionada de E1M1). En hardware real esto no es audible
+como sesgo porque la salida de audio tiene un capacitor de acoplamiento
+(filtro pasa-altos analógico) que remueve cualquier componente DC antes de
+llegar al parlante. Este sintetizador software escribe las muestras
+crudas directamente, sin ese filtrado — y un sesgo DC no filtrado no es
+solo un problema visual: cada vez que una nota con forma de onda
+asimétrica empieza o termina, el nivel DC salta de golpe, y un salto de DC
+es en sí mismo un transitorio de banda ancha (un "click").
+
+Se agregó un filtro DC-block clásico de un polo
+(`y[n] = x[n] - x[n-1] + R*y[n-1]`, R≈0.9986, corte ≈2 Hz) aplicado a la
+muestra final ya mezclada en `opl_mix_sample()`. El nivel DC promedio del
+primer minuto de E1M1 bajó de 5738 a 72 (prácticamente cero) sobre una
+escala de ±32767.
+
+### 10.7 Bug real detrás del chirrido residual: mezcla con divisor dinámico
+
+Con los fixes anteriores aplicados, el chirrido persistía. Otra
+inspección de forma de onda del usuario mostró una **caída abrupta a
+media envolvente**, sin ningún evento de retrigger de canal cerca (se
+descartó instrumentando y registrando cada evento de robo/reutilización
+de canal: no hubo ninguno en el primer minuto de la canción). La causa
+real: `opl_mix_sample()` sumaba las muestras de todos los canales OPL2
+activos y dividía por **la cantidad de canales activos en ese instante**
+(`sum /= n`). Cada vez que una nota nueva activaba un canal antes inactivo
+— incluso si esa nota recién estaba empezando su ataque y casi no
+aportaba volumen todavía — `n` subía de golpe, y eso diluía
+instantáneamente el volumen de **todas las demás** notas que ya estaban
+sonando. Lo mismo al revés cuando un canal se apagaba. El resultado es un
+"bombeo" (ducking) de volumen cada vez que entra o sale una voz — un
+defecto de la estrategia de mezcla, no de ningún instrumento puntual, y
+consistente con los cientos de eventos de nota por minuto típicos de
+cualquier canción.
+
+Fix: dividir por un **divisor fijo**, no por el conteo de canales activos,
+de forma que el volumen de un canal ya sonando no dependa de que otros
+canales prendan o apaguen. El valor del divisor se ajustó empíricamente
+midiendo saltos bruscos (>5000 de diferencia entre muestras consecutivas)
+y RMS sobre el primer minuto de E1M1 renderizado offline:
+
+| Divisor | Saltos bruscos (60s) | Pico | RMS |
+|---|---|---|---|
+| 2 | 816 (mal, similar al bug original) | 32114 | 7716 |
+| 3 | 93 | 27932 | 5275 |
+| **4 (elegido)** | **1** | **27018** | **3956** |
+| 5 | 0 | 21627 | 3163 |
+| 9 (=NUM_OPL_CHAN, siempre sin clipping posible) | 0 | ~12045 | ~1758 (demasiado bajo) |
+
+Se probó primero compensar el volumen con una ganancia x2 aplicada en la
+mezcla final con SFX (`i_sound.c`), pero por sugerencia del usuario se
+prefirió un solo parámetro de volumen en un solo lugar: ajustar
+directamente el divisor de `hp_music.c` (de 5 a 4) en vez de mantener dos
+controles de volumen en dos archivos distintos. Divisor 4 da un solo
+salto brusco residual en 60 segundos (prácticamente inaudible) con volumen
+notablemente mayor que 5.
+
+### 10.8 Estado final (chirrido)
+
+Con los seis fixes de la sección 10 combinados (percusión, feedback,
+anti-aliasing por Nyquist, envolvente sin corte duro, DC-block, divisor de
+mezcla fijo), el usuario confirmó en hardware real: "se siente mucho
+mejor" / el ruido molesto ya no se percibe. El volumen de la música quedó
+equilibrado respecto a los efectos de sonido tras ajustar el divisor de 5
+a 4.
+
+Archivos modificados en esta sección: `src/hp_music.c` únicamente
+(`mus_process_tic()`, `note_phase_step()`, `load_instrument()`,
+`render_channel()`, `opl_mix_sample()`, nueva función
+`rate_to_inc_release()`). `src/i_sound.c` no requirió cambios finales (se
+probó y revirtió una ganancia adicional ahí, ver 10.7).
