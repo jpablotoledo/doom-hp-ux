@@ -27,7 +27,7 @@ SUNFLAGS = COMPFLAGS='$(SUNOPT) -D__BIG_ENDIAN__ -DDIYNOSHORT -I/usr/demo/SOUND/
 	LDFLAGS='-L/usr/local/DIR/X11/R6/lib -lX11 -lXext -lICE -lXmu' \
 	LIBS='$(BASELIBS) -lXext -lICE -lsocket -lnsl -L/usr/demo/SOUND/lib -laudio -lm'
 
-HPFLAGS = COMPFLAGS='+O2 +Onolimit +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG) $$(SPECIALFLAGS)' \
+HPFLAGS = COMPFLAGS='+O3 +Onolimit +DA2.0 +DS2.0 +Ofastaccess +e -Aa -D__BIG_ENDIAN__ -D_HPUX_SOURCE -I/usr/include -I/opt/audio/include $(DBGFLAG) $$(SPECIALFLAGS)' \
 	LDFLAGS='-L/usr/lib/X11R6 -L/usr/contrib/X11R6/lib -L/opt/audio/lib -lX11 -lXext -lICE -lXmu -lAlib -lAt' \
 	LIBS='$(BASELIBS) -lm'
 

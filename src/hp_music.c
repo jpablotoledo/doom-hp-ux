@@ -76,7 +76,7 @@ typedef struct {
     int env, env_state;
     int env_atk, env_dec, env_sus, env_rel;
     int tl, wave, egt;
-    int fb_prev;
+    int fb_prev, fb_prev2;
 } hp_opl_op_t;
 
 typedef struct {
@@ -128,6 +128,33 @@ static int rate_to_inc(int rate)
     return tbl[rate];
 }
 
+/* Real OPL2 envelopes are stepped in the log(dB)-attenuation domain, which
+ * is why a "fast" release still tapers the linear PCM output smoothly -
+ * each dB step is a *multiplicative* cut, shrinking rapidly as the signal
+ * already gets quiet. This synth's envelope is linear (env is a plain
+ * 0-511 amplitude scale, not a log/dB one), so the same per-sample rate
+ * table entry (rate_to_inc() above can return up to 512, i.e. the whole
+ * 0-511 range in a single sample for the fastest release rates, common on
+ * percussion instruments such as GENMIDI's hi-hats) instead produces a
+ * hard, instant amplitude cliff: a discontinuous derivative straight to
+ * silence with no taper at all. That's audible as a sharp "tick"/click on
+ * every note-off, confirmed by comparing this synth's release-tail
+ * waveform against Nuked-OPL2's for the same instrument (see
+ * docs/investigacion-musica.md) - Nuked's tapers smoothly, this synth's
+ * cut hard until this fix. This isn't worth porting the full log-domain
+ * envelope model for (a much larger rewrite for a narrow benefit), so
+ * instead the release rate is capped to a minimum length in samples,
+ * turning a possible one-sample cliff into a short (still fast,
+ * imperceptible as a fade, but no longer a discontinuity) linear ramp. */
+#define ENV_REL_MIN_SAMPLES 48
+static int rate_to_inc_release(int rate)
+{
+    int inc = rate_to_inc(rate);
+    int max_inc = ENV_MAX / ENV_REL_MIN_SAMPLES;
+    if (inc > max_inc) inc = max_inc;
+    return inc;
+}
+
 static void op_key_on(hp_opl_op_t *op, unsigned int step, int preserve_phase)
 {
     if (!preserve_phase) op->phase = 0;
@@ -168,7 +195,29 @@ static int op_env_step(hp_opl_op_t *op)
 static unsigned int note_phase_step(int midi_note, int mult_field)
 {
     double freq = 440.0 * pow(2.0, (midi_note - 69.0) / 12.0);
-    double step = freq * (double)mult2x[mult_field & 15] * 0.5 * 4294967296.0 / (double)HP_MUSIC_SAMPLE_RATE;
+    double step;
+    freq *= (double)mult2x[mult_field & 15] * 0.5;
+    /* Some GENMIDI instruments - several fixed-note percussion voices in
+     * particular (e.g. the open hi-hat, instrument 139: fixed note 79 at
+     * mult x10 works out to ~7840 Hz) - specify a carrier frequency above
+     * this synth's Nyquist limit (HP_MUSIC_SAMPLE_RATE/2 = 5512.5 Hz).
+     * Real OPL2 hardware/cycle-accurate emulators (Nuked-OPL2) run their
+     * internal DSP well above audible range and band-limit on the way
+     * down to output rate, so this never aliases there. This synth
+     * generates directly at the final 11025 Hz with no oversampling
+     * (too expensive for this machine's CPU budget), so a frequency past
+     * Nyquist folds back into an unrelated, dissonant frequency inside
+     * the audible band instead - heard as a harsh screech, confirmed by
+     * comparing this synth's output for instrument 139 against
+     * Nuked-OPL2's for the same instrument/note (see
+     * docs/investigacion-musica.md). Clamping the representable
+     * frequency below Nyquist trades exact pitch accuracy on a handful
+     * of extreme high instruments for not aliasing - an easy trade,
+     * since those are already noise-like percussive sounds where the
+     * precise pitch is inaudible/unimportant. */
+    if (freq > HP_MUSIC_SAMPLE_RATE * 0.45)
+        freq = HP_MUSIC_SAMPLE_RATE * 0.45;
+    step = freq * 4294967296.0 / (double)HP_MUSIC_SAMPLE_RATE;
     return (unsigned int)(step + 0.5);
 }
 
@@ -194,10 +243,11 @@ static void load_instrument(hp_opl_chan_t *ch, int instr_idx, int midi_note, int
     ch->mod.wave    = GM_MOD_WAVE(instr_idx, 0) & 3;
     ch->mod.egt     = (GM_MOD_MUL(instr_idx, 0) >> 5) & 1;
     ch->mod.env_atk = rate_to_inc(ar);
-    ch->mod.env_dec = rate_to_inc(dr);
+    ch->mod.env_dec = rate_to_inc_release(dr);
     ch->mod.env_sus = (sl == 15) ? 0 : (ENV_MAX - sl * (ENV_MAX / 15));
-    ch->mod.env_rel = rate_to_inc(rr); if (ch->mod.env_rel < 1) ch->mod.env_rel = 1;
+    ch->mod.env_rel = rate_to_inc_release(rr); if (ch->mod.env_rel < 1) ch->mod.env_rel = 1;
     ch->mod.fb_prev = 0;
+    ch->mod.fb_prev2 = 0;
     step = note_phase_step(note, GM_MOD_MUL(instr_idx, 0) & 0xF);
     op_key_on(&ch->mod, step, preserve_phase);
 
@@ -212,9 +262,9 @@ static void load_instrument(hp_opl_chan_t *ch, int instr_idx, int midi_note, int
     ch->car.wave    = GM_CAR_WAVE(instr_idx, 0) & 3;
     ch->car.egt     = (GM_CAR_MUL(instr_idx, 0) >> 5) & 1;
     ch->car.env_atk = rate_to_inc(ar);
-    ch->car.env_dec = rate_to_inc(dr);
+    ch->car.env_dec = rate_to_inc_release(dr);
     ch->car.env_sus = (sl == 15) ? 0 : (ENV_MAX - sl * (ENV_MAX / 15));
-    ch->car.env_rel = rate_to_inc(rr); if (ch->car.env_rel < 1) ch->car.env_rel = 1;
+    ch->car.env_rel = rate_to_inc_release(rr); if (ch->car.env_rel < 1) ch->car.env_rel = 1;
     ch->car.fb_prev = 0;
     step = note_phase_step(note, GM_CAR_MUL(instr_idx, 0) & 0xF);
     op_key_on(&ch->car, step, preserve_phase);
@@ -233,8 +283,20 @@ static short render_channel(hp_opl_chan_t *ch)
 
     {
         unsigned int ph = ch->mod.phase;
-        if (ch->fb > 0 && ch->mod.fb_prev != 0) {
-            int fb_idx = (ch->mod.fb_prev * 2) >> (9 - ch->fb);
+        if (ch->fb > 0) {
+            /* Real OPL2 feeds back the SUM of the modulator's last two raw
+             * outputs (see Nuked-OPL2's OPL2_SlotCalcFB: fbmod = (prout +
+             * out) >> (9 - fb)), not double the single most recent one.
+             * Doubling a single sample amplifies rather than damps any
+             * sign flip between consecutive samples, and at high feedback
+             * (fb=7, used by several percussion instruments such as the
+             * open hi-hat) that turned into runaway alternating-sign
+             * oscillation - large sample-to-sample jumps audible as a
+             * harsh screech, confirmed by comparing against Nuked-OPL2
+             * (cycle-accurate, validated against real YM3812 hardware)
+             * rendering the same instrument/note offline: Nuked stayed
+             * smooth, this synth did not, until this fix. */
+            int fb_idx = (ch->mod.fb_prev + ch->mod.fb_prev2) >> (9 - ch->fb);
             if (fb_idx >= 0) ph += (unsigned int)fb_idx << 22;
             else             ph -= (unsigned int)(-fb_idx) << 22;
         }
@@ -244,6 +306,7 @@ static short render_channel(hp_opl_chan_t *ch)
 
     raw_m = (int)mod_s * env_m / ENV_MAX;
     raw_m = (int)((long)raw_m * tl_attn[ch->mod.tl] / 32767L);
+    ch->mod.fb_prev2 = ch->mod.fb_prev;
     ch->mod.fb_prev = raw_m / 512;
 
     car_phase = ch->car.phase;
@@ -274,6 +337,8 @@ static short render_channel(hp_opl_chan_t *ch)
 
 static short opl_mix_sample(void)
 {
+    static long dc_x1 = 0, dc_y1 = 0;
+    long yn;
     int i, sum = 0, n = 0;
     for (i = 0; i < NUM_OPL_CHAN; i++) {
         if (opl_chan[i].active) {
@@ -283,10 +348,68 @@ static short opl_mix_sample(void)
                 opl_chan[i].active = 0;
         }
     }
-    if (n == 0) return 0;
-    sum /= n;
+    /* Mix by a FIXED divisor (total polyphony), not by how many channels
+     * happen to be active on this particular sample. Dividing by the
+     * live active-channel count n meant the perceived volume of every
+     * already-sounding note jumped the instant any other channel turned
+     * on or off - e.g. a new note starting quiet (early in its own
+     * attack ramp, contributing almost nothing yet) still immediately
+     * diluted every other note's share of the mix by upping the
+     * denominator, an audible sudden volume "duck" with no accompanying
+     * new sound to justify it. That's a different defect from the
+     * per-sample synth glitches fixed above - it's an artifact of the
+     * mixing/normalization strategy, not of any one instrument - and
+     * matches what a user found by visually inspecting the waveform in
+     * Audacity: a sharp envelope-level drop with no corresponding
+     * synthesis discontinuity underneath it. A fixed divisor means a
+     * channel's own volume is unaffected by unrelated channels turning
+     * on/off; the tradeoff is headroom (all NUM_OPL_CHAN channels at
+     * simultaneous full volume could in principle need it), which is
+     * fine since the final clamp below still protects against overflow
+     * and brief mild clipping under dense chords is far less audible
+     * than periodic per-note volume pumping. Divisor 5 (rather than
+     * NUM_OPL_CHAN=9) was chosen empirically: it's rare for all 9
+     * channels to be simultaneously near full volume in practice, and
+     * dividing by 9 unconditionally left the mix needlessly quiet
+     * (measured ~3.6x lower RMS on docs/investigacion-musica.md's E1M1
+     * test render than the old dynamic-n approach) for no additional
+     * benefit. Divisor 4 measured just 1 >5000-magnitude sample jump
+     * over a 60s render (vs. 0 at divisor 5, 93 at divisor 3, 816 - back
+     * to being audibly bad - at divisor 2), while being noticeably
+     * louder (RMS ~3956 vs. 3163 at divisor 5) - picked over divisor 5
+     * for the better loudness/stability trade found by direct
+     * measurement (see docs/investigacion-musica.md). */
+    sum /= 4;
     if (sum >  32767) sum =  32767;
     if (sum < -32767) sum = -32767;
+
+    /* DC blocker. Several GENMIDI carrier waveforms (half sine, full
+     * rectified sine, quarter sine - opl_wave() cases 1-3) are, by OPL2
+     * design, not centered on zero: their average level is intentionally
+     * above zero (that "buzz"/edge is part of the intended timbre, e.g.
+     * overdriven/distortion guitar patches). Real OPL2 sound hardware has
+     * an output coupling capacitor that removes that DC bias before it
+     * reaches the speaker; this software synth writes samples straight
+     * through with no such filtering, so the bias is audible directly -
+     * both as a visibly asymmetric waveform and, more importantly, as an
+     * audible click on every note-on/note-off: the DC level itself steps
+     * up or down abruptly whenever such a note starts or stops, and a
+     * sudden DC step is a broadband transient just like any other click.
+     * This compounds the envelope-release click already addressed above
+     * (rate_to_inc_release()). Standard one-pole DC blocker (Julius O.
+     * Smith's classic form: y[n] = x[n] - x[n-1] + R*y[n-1]), applied
+     * once to the final mixed sample rather than per-channel since it's
+     * the summed/averaged signal that actually reaches the output. R is
+     * close to 1 so the cutoff (~2 Hz at this 11025 Hz rate) sits far
+     * below any audible musical content - only true DC/near-DC is
+     * removed. */
+    yn = (long)sum - dc_x1 + (dc_y1 * 32723L) / 32768L;
+    dc_x1 = sum;
+    dc_y1 = yn;
+    sum = (int)yn;
+    if (sum >  32767) sum =  32767;
+    if (sum < -32767) sum = -32767;
+
     return (short)sum;
 }
 
@@ -363,12 +486,22 @@ static int mus_process_tic(void)
             if (note & 0x80) { vel = mus_read_byte() & 0x7F; mus_chan_vol[chan] = vel; }
             else vel = mus_chan_vol[chan];
             note &= 0x7F;
+            /* Percussion channel: key must fall in the General MIDI drum
+             * range [35, 81] (47 instruments); anything outside that is
+             * not a valid percussion sound and must be ignored, not
+             * clamped to some other instrument. Chocolate Doom's
+             * i_oplmusic.c KeyOnEvent() does the same: instrument index is
+             * key-35, out-of-range keys are dropped. Clamping instead
+             * (as this code used to do via "128 + (note & 0x3F)") could
+             * pick an unrelated, much harsher-sounding percussion
+             * instrument for any note outside that window. */
+            if (chan == 15 && (note < 35 || note > 81)) break;
             {
                 int same_note, was_active;
                 opl_ch = alloc_opl_channel(chan, note);
                 was_active = opl_chan[opl_ch].active;
                 same_note = was_active && opl_chan[opl_ch].mus_chan == chan && opl_chan[opl_ch].note == note;
-                instr = (chan == 15) ? (128 + (note & 0x3F)) : mus_chan_instr[chan];
+                instr = (chan == 15) ? (128 + (note - 35)) : mus_chan_instr[chan];
                 if (instr >= GENMIDI_INSTR) instr = GENMIDI_INSTR - 1;
                 if (was_active) {
                     opl_chan[opl_ch].fade_from = opl_chan[opl_ch].last_out;

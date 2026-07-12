@@ -92,21 +92,55 @@ log "WAD copied:    $WAD_SOURCE -> $DISTDIR/doom.wad"
 # Empty config file (Doom will populate it with defaults on first exit)
 touch "$DISTDIR/doom.cfg"
 
-# Launch script
+# Launch scripts. doom.sh is the default: music + sound effects.
+# The others pass -nomusic/-nosound straight through to the binary; on
+# HP-UX -nosound also skips the SIGALRM audio timer and all per-frame
+# mixing work entirely (not just muting output), for better performance
+# on this machine when audio isn't needed. See docs/investigacion-musica.md.
 cat > "$DISTDIR/doom.sh" << 'RUNEOF'
 #!/bin/sh
-# Doom launcher for HP-UX
+# Doom launcher for HP-UX - music + sound effects (default)
 DOOM_DIR=`dirname $0`
 cd "$DOOM_DIR"
 DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux "$@"
 RUNEOF
 chmod 755 "$DISTDIR/doom.sh"
 
+cat > "$DISTDIR/doom-hpux-nomusic.sh" << 'RUNEOF'
+#!/bin/sh
+# Doom launcher for HP-UX - sound effects only, no music
+DOOM_DIR=`dirname $0`
+cd "$DOOM_DIR"
+DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux -nomusic "$@"
+RUNEOF
+chmod 755 "$DISTDIR/doom-hpux-nomusic.sh"
+
+cat > "$DISTDIR/doom-hpux-nomusic-nofx.sh" << 'RUNEOF'
+#!/bin/sh
+# Doom launcher for HP-UX - no music, no sound effects (best performance)
+DOOM_DIR=`dirname $0`
+cd "$DOOM_DIR"
+DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux -nomusic -nosound "$@"
+RUNEOF
+chmod 755 "$DISTDIR/doom-hpux-nomusic-nofx.sh"
+
+cat > "$DISTDIR/doom-hpux-nosound.sh" << 'RUNEOF'
+#!/bin/sh
+# Doom launcher for HP-UX - no audio at all (best performance)
+DOOM_DIR=`dirname $0`
+cd "$DOOM_DIR"
+DOOMWADDIR="$DOOM_DIR" DISPLAY="${DISPLAY:-:0.0}" ./doom-hpux -nosound "$@"
+RUNEOF
+chmod 755 "$DISTDIR/doom-hpux-nosound.sh"
+
 log ""
 log "=== Distribution ready at: $DISTDIR ==="
 ls -la "$DISTDIR" 2>&1 | tee -a "$LOG"
 log ""
 log "To play, run from the CDE terminal:"
-log "  $DISTDIR/doom.sh"
+log "  $DISTDIR/doom.sh                    (music + sound effects, default)"
+log "  $DISTDIR/doom-hpux-nomusic.sh        (sound effects only)"
+log "  $DISTDIR/doom-hpux-nomusic-nofx.sh   (no audio, best performance)"
+log "  $DISTDIR/doom-hpux-nosound.sh        (no audio, best performance)"
 
 echo 0 > /tmp/doom_build.exit

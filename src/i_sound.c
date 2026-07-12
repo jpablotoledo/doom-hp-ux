@@ -1128,6 +1128,12 @@ static volatile sig_atomic_t hp_audio_busy = 0;
 
 void I_HPAudioTick(void)
 {
+  /* I_UpdateSound() doesn't check SoundDisabled itself — it always mixes
+   * a full buffer's worth of samples regardless. Called once per
+   * iteration of d_main.c's uncapped while(1), that's real, avoidable
+   * CPU cost with -nosound, so skip both calls entirely here instead of
+   * relying on the checks inside I_SubmitSound()/I_HPStartAudioTimer(). */
+  if (SoundDisabled) return;
   if (hp_audio_busy) return;
   hp_audio_busy = 1;
   I_UpdateSound();
