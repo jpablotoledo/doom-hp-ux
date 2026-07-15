@@ -96,7 +96,7 @@ touch "$DISTDIR/doom.cfg"
 # The others pass -nomusic/-nosound straight through to the binary; on
 # HP-UX -nosound also skips the SIGALRM audio timer and all per-frame
 # mixing work entirely (not just muting output), for better performance
-# on this machine when audio isn't needed. See docs/investigacion-musica.md.
+# on this machine when audio isn't needed. See docs/05-investigacion-musica.md.
 cat > "$DISTDIR/doom.sh" << 'RUNEOF'
 #!/bin/sh
 # Doom launcher for HP-UX - music + sound effects (default)

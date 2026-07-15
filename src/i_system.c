@@ -59,13 +59,13 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 /* Doom's internal Z_Malloc zone (all level data, textures, sprites,
  * cached WAD lumps including SFX/music) lives entirely inside this one
- * fixed block, independent of how much physical RAM the machine has —
+ * fixed block, independent of how much physical RAM the machine has -
  * a DOS-era constraint (kept at 32MB here) that has nothing to do with
  * this specific HP-UX port. On this B2000 (1GB RAM, ~100+MB free during
  * play per `vmstat`) 32MB is tight enough that the zone allocator has to
  * keep purging PU_CACHE-tagged lumps (SFX, textures) to make room for
  * new ones, which means Doom re-reads them from the WAD file on disk
- * the next time they're needed — this is what the "disco duro trabaja"
+ * the next time they're needed - this is what the "disco duro trabaja"
  * stutter (present even in old, music-free builds, confirmed by
  * testing commit 3191a4e) actually is. Raised well within what the
  * machine has to spare so the cache has enough room not to thrash. */

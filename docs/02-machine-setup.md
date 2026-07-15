@@ -1,3 +1,12 @@
+> **Historical snapshot (June 2011).** This document captures the machine
+> audit and first successful build at the very start of the project, when
+> Doom ran on the B2000 with **no audio at all**. Paths, flags, and binary
+> sizes described here no longer match the current state of the repository
+> (audio, music, and several compiler/runtime fixes were added later - see
+> [`docs/00-index.md`](00-index.md) for the full chronological list of
+> docs). Kept as-is for historical reference rather than rewritten, so the
+> project's early state stays documented accurately.
+
 # HP Visualize B2000 Machine Setup
 
 ## System info
@@ -208,7 +217,7 @@ sh /tmp/doom-hpux/doom_build.sh
 
 ### P2: `make -C dir` is not compatible with HP make
 **Cause:** HP make does not support the `-C` option (GNU make extension).
-**Fix:** Change the Makefile to `cd dir && make` (see docs/source-changes.md)
+**Fix:** Change the Makefile to `cd dir && make` (see docs/03-source-changes.md)
 
 ### P3: Compiler `ccom` dies from SIGHUP when closing the telnet session
 **Cause:** When ksh session closes, the shell sends SIGHUP to the process group. The `ccom` subprocess of the HP compiler does not ignore SIGHUP even when the parent uses `nohup`.

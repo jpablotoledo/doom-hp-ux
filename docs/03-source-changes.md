@@ -1,3 +1,11 @@
+> **Historical snapshot (June 2011).** Covers the changes needed for the
+> very first working build (X11 paths, HP make compatibility, config file
+> location). Written before audio, music, and the compiler/performance
+> work existed - it does not reflect the current `src/Makefile` flags or
+> the rest of the source tree. See [`docs/00-index.md`](00-index.md) for
+> the full chronological list of docs, including the ones that superseded
+> this content.
+
 # Source code changes to Doom It Yourself for HP-UX
 
 ## Code base

@@ -1,3 +1,11 @@
+> **Instantánea histórica (junio 2011).** Cubre los cambios necesarios
+> para el primer build funcional (rutas X11, compatibilidad con HP make,
+> ubicación del config file). Escrito antes de que existiera audio,
+> música o el trabajo de rendimiento/compilador - no refleja los flags
+> actuales de `src/Makefile` ni el resto del árbol de fuentes. Ver
+> [`docs/00-indice.md`](00-indice.md) para el listado cronológico
+> completo de documentos, incluyendo los que superaron este contenido.
+
 # Cambios al código fuente de Doom It Yourself para HP-UX
 
 ## Código base

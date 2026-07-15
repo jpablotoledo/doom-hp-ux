@@ -70,7 +70,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-/* In-process OPL2/GENMIDI synth — no separate process, no pipe. See
+/* In-process OPL2/GENMIDI synth - no separate process, no pipe. See
  * hp_music.c for why: a second process, even a cheap one, introduced
  * enough scheduling/IPC latency on this single-core machine to still
  * audibly stutter whenever Doom's own render loop was busy. */
@@ -1037,7 +1037,7 @@ I_SubmitSound(void)
 
       if (hp_queued < 2 * SampleCount)
       {
-        /* Generate music directly (in-process synth, no pipe — see
+        /* Generate music directly (in-process synth, no pipe - see
          * hp_music.c) and mix it into the SFX buffer before output. */
         {
           short music_buf[1024];   /* max SampleCount stereo frames = 512*2 */
@@ -1088,12 +1088,12 @@ I_SubmitSound(void)
  * render loop is already CPU-bound (~85% of this machine's single core
  * with no music at all), so I_UpdateSound()/I_SubmitSound() called only
  * once per game-loop iteration (as d_main.c does below) get invoked
- * irregularly under load — often much less than the ~35/sec the audio
+ * irregularly under load - often much less than the ~35/sec the audio
  * pipeline assumes. When that happens Aserver's own buffer runs dry
  * between calls and the output audibly cuts.
  *
  * This mirrors why the original SFX throttle (docs/agregar-sonido.md)
- * was needed — writing too FAST overran Aserver — except this is the
+ * was needed - writing too FAST overran Aserver - except this is the
  * mirror-image problem: writing too INFREQUENTLY underruns it. The
  * codebase already had a generic answer for exactly this (the SNDINTR
  * timer-interrupt scaffolding further down), but it was never wired up
@@ -1111,16 +1111,16 @@ I_SubmitSound(void)
  * keep stuttering under load, confirmed by a raw capture of Aserver's
  * input showing the synth itself was never the bottleneck. hp_music.c
  * replaces that with an in-process synth called directly from
- * I_SubmitSound() below — no process boundary left to schedule around. */
+ * I_SubmitSound() below - no process boundary left to schedule around. */
 /* Shared, syscall-free reentrancy guard between the SIGALRM handler and
- * the main loop's own direct call (d_main.c) — both go through this
+ * the main loop's own direct call (d_main.c) - both go through this
  * instead of calling I_UpdateSound()/I_SubmitSound() themselves, so
  * whichever gets there first wins and the other just skips that one
  * cycle. sig_atomic_t is safe to read/write from a signal handler
  * without a lock. This replaces an earlier sigprocmask()-based version:
  * that blocked/unblocked SIGALRM around every single main-loop call,
  * which is fine at 35 calls/sec but this D_DoomLoop() while(1) has no
- * frame cap and can spin thousands of times/sec on light frames —
+ * frame cap and can spin thousands of times/sec on light frames -
  * measured live via vmstat, the two extra syscalls/iteration pushed the
  * machine to ~50-60k syscalls/sec and ~0% idle CPU, which was the
  * actual cause of a regression that looked like an audio/render stall. */
@@ -1128,7 +1128,7 @@ static volatile sig_atomic_t hp_audio_busy = 0;
 
 void I_HPAudioTick(void)
 {
-  /* I_UpdateSound() doesn't check SoundDisabled itself — it always mixes
+  /* I_UpdateSound() doesn't check SoundDisabled itself - it always mixes
    * a full buffer's worth of samples regardless. Called once per
    * iteration of d_main.c's uncapped while(1), that's real, avoidable
    * CPU cost with -nosound, so skip both calls entirely here instead of

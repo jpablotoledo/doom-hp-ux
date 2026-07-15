@@ -136,7 +136,7 @@ void I_UnRegisterSong(int handle);
 
 #ifdef __hpux
 /* Shared entry point for both the SIGALRM audio timer and the main
- * loop's own synchronous call — see i_sound.c for why this replaced
+ * loop's own synchronous call - see i_sound.c for why this replaced
  * calling I_UpdateSound()/I_SubmitSound() directly from d_main.c. */
 void I_HPAudioTick(void);
 #endif

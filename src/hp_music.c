@@ -6,7 +6,7 @@
  * to Doom over a pipe). That design worked correctly once the GENMIDI
  * parsing and MUS tempo bugs were fixed (see docs/investigacion-musica.md),
  * but on this machine's single PA-RISC core, running a second process
- * — even one using under 1% CPU on its own — introduced enough
+ * - even one using under 1% CPU on its own - introduced enough
  * inter-process scheduling/IPC latency that audio still audibly cut
  * whenever Doom's own render loop (already ~85% CPU with no music at
  * all) stalled for a frame. A raw capture of Aserver's input confirmed
@@ -618,7 +618,7 @@ int HPMusic_IsPlaying(void)
 /* Generates `n` stereo-interleaved samples (2*n shorts) directly into buf.
  * Advances the MUS tic clock at the real HP_MUSIC_TEMPO_HZ rate relative
  * to HP_MUSIC_SAMPLE_RATE output samples, so tempo is always correct
- * regardless of how often/irregularly this function is called — same
+ * regardless of how often/irregularly this function is called - same
  * self-pacing principle as I_SubmitSound()'s existing wall-clock
  * throttle, just applied to score advancement instead of Aserver writes. */
 void HPMusic_Generate(short *buf, int n)

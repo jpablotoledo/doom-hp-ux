@@ -12,6 +12,8 @@ Port of **Doom It Yourself (DIY) v4.4.2** compiled and running on an HP Visualiz
 | Compiler | HP C Compiler A.11.01.00 |
 | Video | X11 with MIT-SHM extension |
 | Audio | HP Alib / simpleAudio - 16-bit linear stereo via `Aserver` |
+| Music | In-process OPL2/GENMIDI synthesizer (`hp_music.c`), fed by a real `SIGALRM` timer |
+| Compiler flags | `+O3 +Onolimit +DA2.0 +DS2.0 +Ofastaccess` (confirmed real improvement on hardware) |
 
 ## Source base
 
@@ -36,7 +38,13 @@ The HP-UX synchronous path (`I_SubmitSound`) is called 35 times/sec while the pl
 **`src/Makefile` - Optimization and screen limits**
 Optimization raised from `-O` to `+O2 +Onolimit`. `MAXSCREENWIDTH` raised from 1024 to 1280 and `MAXSCREENHEIGHT` from 768 to 800 to support `-4` mode (1280×800) without overflowing the sprite renderer arrays.
 
-Full details in [docs/machine-setup.md](docs/machine-setup.md) and [docs/add-sound.md](docs/add-sound.md).
+**`src/hp_music.c` - In-process music synthesizer**
+Music was originally unimplemented (`MUSSERV` was never defined for any platform). An in-process OPL2/GENMIDI FM synthesizer + MUS parser was built, fed by a real `SIGALRM`/`setitimer` timer independent of the render loop - no external process, no pipe. Along the way, several real synthesis bugs were found and fixed: wrong MUS percussion instrument mapping, an incorrect OPL2 feedback formula, aliasing above Nyquist on high-frequency percussion instruments, a hard one-sample envelope cutoff on release/decay, an unfiltered DC bias, and a dynamic-divisor mixing bug that caused audible volume "pumping" on every note.
+
+**`src/Makefile` - Compiler optimization flags**
+`+O2` raised to `+O3 +Onolimit +DA2.0 +DS2.0 +Ofastaccess` (target-architecture codegen, instruction scheduling for this CPU model, and faster global/static data access) - confirmed as a real, noticeable improvement playing on the actual hardware.
+
+Full details in [docs/02-machine-setup.md](docs/02-machine-setup.md), [docs/04-add-sound.md](docs/04-add-sound.md), [docs/05-music-investigation.md](docs/05-music-investigation.md), and [docs/06-cpu-performance-investigation.md](docs/06-cpu-performance-investigation.md).
 
 ## WAD
 
@@ -86,11 +94,18 @@ tail -f /tmp/doom_build.log
 
 ```
 /opt/doom-hpux/
-├── doom-hpux   ← binary (~680 KB)
-├── doom.wad    ← Doom 1 shareware (~4 MB)
-├── doom.cfg    ← config (created on game exit)
-└── doom.sh     ← launch script
+├── doom-hpux                    ← binary (~750 KB)
+├── doom.wad                     ← Doom 1 shareware (~4 MB)
+├── doom.cfg                     ← config (created on game exit)
+├── doom.sh                      ← launch script: music + sound effects (default)
+├── doom-hpux-nomusic.sh         ← launch script: sound effects only
+├── doom-hpux-nomusic-nofx.sh    ← launch script: no audio (best performance)
+└── doom-hpux-nosound.sh         ← launch script: no audio (best performance)
 ```
+
+`-nosound` skips all audio mixing work entirely at runtime (not just
+muting the output), for the best possible performance when audio isn't
+needed.
 
 ## Running
 
@@ -111,6 +126,18 @@ Scale options (software scaling, CPU cost increases with factor):
 
 ## Documentation
 
-- [docs/machine-setup.md](docs/machine-setup.md) - Machine state, build steps, problems found and solutions
-- [docs/source-changes.md](docs/source-changes.md) - Source code changes with diffs and technical rationale
-- [docs/add-sound.md](docs/add-sound.md) - Sound implementation via HP Alib: changes, problems and solutions
+Listed in the order they were written, so they also read as a timeline of
+how the project grew. See [docs/00-index.md](docs/00-index.md) for the
+same list with dates and one-line summaries.
+
+1. This file / [LEAME.md](LEAME.md) - project overview
+2. [docs/02-machine-setup.md](docs/02-machine-setup.md) *(historical)* - Machine state, build steps, problems found and solutions
+3. [docs/03-source-changes.md](docs/03-source-changes.md) *(historical)* - Source code changes with diffs and technical rationale
+4. [docs/04-add-sound.md](docs/04-add-sound.md) *(historical)* - Sound implementation via HP Alib: changes, problems and solutions
+5. [docs/05-music-investigation.md](docs/05-music-investigation.md) - Full music investigation: architecture, bugs found and fixed, final state
+6. [docs/06-cpu-performance-investigation.md](docs/06-cpu-performance-investigation.md) - Compiler/CPU optimization research and results
+7. [docs/07-commit-audit.md](docs/07-commit-audit.md) - Commit-by-commit audit of what was necessary vs. superseded
+
+*(historical)* docs describe the project's 2011 starting state and are
+kept unedited for historical accuracy; they no longer reflect the
+current source tree. See the note at the top of each.

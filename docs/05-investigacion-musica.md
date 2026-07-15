@@ -35,7 +35,7 @@ ni siquiera en Linux.
 Verificado directamente contra `shareware/doom1.wad`: contiene **13 lumps `D_*`**
 en formato MUS (E1M1–E1M9, INTER, INTRO, VICTOR, INTROA) más el lump
 **`GENMIDI`** (11.908 bytes, banco de instrumentos FM estándar de DMX). Todos los
-datos necesarios ya están en el WAD que se distribuye con el proyecto — no hace
+datos necesarios ya están en el WAD que se distribuye con el proyecto - no hace
 falta descargar ni convertir nada externamente. El formato MUS es propietario de
 id Software/DMX (similar a MIDI pero comprimido); el parser de cabecera MUS
 (`struct musheader_s`) existe en el código pero está muerto dentro de `#ifdef
@@ -44,11 +44,11 @@ MUSSERV`.
 ## 2. Verificación en la máquina real (HP Visualize B2000, vía telnet)
 
 - **Alib/Aserver es un canal PCM puro**: se revisaron `/opt/audio/include/Alib.h`
-  y `Audio.h` en la propia máquina — cero símbolos relacionados con MIDI.
+  y `Audio.h` en la propia máquina - cero símbolos relacionados con MIDI.
   `/opt/audio/bin/` solo contiene `Aserver`, `asecure`, `attributes`, `convert`,
   `send_sound`. No hay sintetizador MIDI ni externo instalado (`swlist`, `find`
   sobre el filesystem: negativos). **Esto descarta cualquier opción de pasarela
-  MIDI** — la única vía viable es generar PCM en software y reproducirlo por el
+  MIDI** - la única vía viable es generar PCM en software y reproducirlo por el
   mismo canal que ya usan los SFX (`openAStream`/`write(audio_fd, ...)`).
 - **Recursos disponibles**: `/` con ~103 MB libres, `/opt` ~3,2 GB libres, `/tmp`
   ~424 MB libres; CPU ociosa (load average 0,02) fuera de partida. Margen
@@ -69,7 +69,7 @@ implementa **una arquitectura de síntesis OPL2 en tiempo real de punta a punta*
 - `src/i_sound.c` modificado: usa `fork()` + dos pipes (en vez de `popen()`) para
   que el proceso de música escriba PCM a un pipe que Doom lee con un **ring
   buffer** y mezcla en tiempo real con el buffer de SFX antes de escribir al
-  mismo `audio_fd` de Aserver — resolviendo el problema de "un stream único vs.
+  mismo `audio_fd` de Aserver - resolviendo el problema de "un stream único vs.
   varios streams simultáneos" a favor de un único stream mezclado.
 - Ya resolvieron un problema real de portabilidad al compilador HP:
   `__attribute__((packed))` (rechazado por `cc -Aa`) fue reemplazado por lectura
@@ -77,7 +77,7 @@ implementa **una arquitectura de síntesis OPL2 en tiempo real de punta a punta*
 - El binario `musserver-hpux` sigue instalado en `/opt/doom-hpux/` en la máquina
   real, y el log de una sesión reciente (`doom.log`) muestra el mecanismo
   funcionando (pipes, throttling, mezcla, con estadísticas coherentes:
-  `musmix: calls=700 throttled=278 read_ok=422 ... hp_queued=1217`) — pero el
+  `musmix: calls=700 throttled=278 read_ok=422 ... hp_queued=1217`) - pero el
   propio mensaje del commit indica que el resultado audible era **ruido**, no
   música limpia. Hay 16 archivos WAV de depuración en `test_audio/` (nombres como
   `..._ENDIANNESS_FIXED`, `..._fixed_retrigger`, `..._crossfade`,
@@ -90,7 +90,7 @@ implementa **una arquitectura de síntesis OPL2 en tiempo real de punta a punta*
 
 La música de Doom no es MIDI genérico: es **MUS**, un formato propio de id
 Software/DMX muy parecido a MIDI pero comprimido. El lump `GENMIDI` tampoco es
-un banco de sonidos MIDI — son literalmente **bytes de registros del chip
+un banco de sonidos MIDI - son literalmente **bytes de registros del chip
 OPL2** (el sintetizador FM de las tarjetas AdLib/SoundBlaster de los 90). Por
 eso "construir un reproductor MIDI" para validar antes de tocar el juego, en la
 práctica, significa construir un emulador de OPL2 que consuma esos registros.
@@ -116,18 +116,18 @@ objetivamente, sin necesidad de escuchar, en qué etapa se rompe la señal:
    (confirma el propio comentario en el código: *"dense broadband noise"*).
 2. Al reemplazarlo por **Nuked-OPL2-Lite** (`src/opl2.c`/`opl2.h`, emulador de
    ciclo exacto verificado contra hardware real, licencia LGPL 2.1) alimentado
-   directamente con los bytes de registro de `GENMIDI` — arquitectónicamente
-   correcto, porque GENMIDI *son* registros OPL2 — y corregir un bug de
+   directamente con los bytes de registro de `GENMIDI` - arquitectónicamente
+   correcto, porque GENMIDI *son* registros OPL2 - y corregir un bug de
    endianness, el resultado **aislado es limpio y tonal** (archivo 11). El
    motor de síntesis está, en la práctica, resuelto.
 3. La captura real desde el pipeline completo (archivo 14: proceso hijo → pipe
    → ring buffer → mezcla con SFX → `write()` a Aserver) muestra en cambio una
-   señal degradada, dominada por frecuencias muy bajas (0-120 Hz) — un bug
+   señal degradada, dominada por frecuencias muy bajas (0-120 Hz) - un bug
    **distinto**, en la etapa de integración (lectura del pipe, formato/orden de
    muestras en el ring buffer, o la fórmula de mezcla "virtual-analog" en
    `I_SubmitSound()`), no en la síntesis en sí.
 
-**Conclusión:** no hace falta construir un reproductor de prueba desde cero —
+**Conclusión:** no hace falta construir un reproductor de prueba desde cero -
 ya existe uno y ya demostró que la síntesis funciona (archivo 11). El problema
 real y acotado está en el último tramo del pipeline (pipe → ring buffer →
 mezcla → Aserver), la parte más nueva y frágil de `i_sound.c`. El paso de
@@ -138,9 +138,9 @@ pipe *antes* de la mezcla) en vez de reconstruir el sintetizador.
 
 | Opción | Descripción | Riesgo | Trabajo reutilizable |
 |---|---|---|---|
-| **A. Retomar `adding-music`** | Depurar la etapa de integración (pipe/ring buffer/mezcla/Aserver) partiendo de que la síntesis OPL2 (Nuked-OPL2 + GENMIDI) ya está validada de forma aislada | Bajo-medio — el problema ya está acotado a una etapa concreta | ~2500 líneas + horas de debugging ya documentadas en `test_audio/`, incluida la síntesis funcional |
-| **B. Pre-render offline a PCM** | Convertir las 13 pistas MUS a PCM/WAV fuera de HP-UX (reutilizando el propio Nuked-OPL2, que ya probó ser correcto) y reproducirlas por streaming simple, igual que los SFX | Bajo — sin síntesis en tiempo real, sin riesgo de CPU ni de bugs de emulación | El emulador Nuked-OPL2 ya validado (archivo 11) se reutilizaría igual, solo cambia cómo se reproduce el resultado |
-| **C. Pasarela a sintetizador MIDI externo** | Descartada — no existe backend MIDI en la máquina (verificado) | — | — |
+| **A. Retomar `adding-music`** | Depurar la etapa de integración (pipe/ring buffer/mezcla/Aserver) partiendo de que la síntesis OPL2 (Nuked-OPL2 + GENMIDI) ya está validada de forma aislada | Bajo-medio - el problema ya está acotado a una etapa concreta | ~2500 líneas + horas de debugging ya documentadas en `test_audio/`, incluida la síntesis funcional |
+| **B. Pre-render offline a PCM** | Convertir las 13 pistas MUS a PCM/WAV fuera de HP-UX (reutilizando el propio Nuked-OPL2, que ya probó ser correcto) y reproducirlas por streaming simple, igual que los SFX | Bajo - sin síntesis en tiempo real, sin riesgo de CPU ni de bugs de emulación | El emulador Nuked-OPL2 ya validado (archivo 11) se reutilizaría igual, solo cambia cómo se reproduce el resultado |
+| **C. Pasarela a sintetizador MIDI externo** | Descartada - no existe backend MIDI en la máquina (verificado) | - | - |
 
 ## 6. Sesión de depuración en vivo (2026-07-10): dos bugs reales encontrados y corregidos
 
@@ -153,8 +153,8 @@ B2000 por telnet/FTP (sin acceso SSH/SCP disponible):
 1. Editar el `.c` localmente.
 2. Subir por FTP a `/tmp/opltest/` en el B2000.
 3. Compilar y ejecutar con `cc -Ae +O2 ...` lanzado vía `at -f script now`
-   (evita que `ccom` muera por `SIGHUP` al cerrar la sesión telnet — el mismo
-   problema P3 ya documentado en `docs/machine-setup.md`).
+   (evita que `ccom` muera por `SIGHUP` al cerrar la sesión telnet - el mismo
+   problema P3 ya documentado en `docs/02-machine-setup.md`).
 4. Descargar el `.wav` resultante por FTP a `test_audio/loop/` en este repo.
 5. Escuchar y/o analizar espectralmente, iterar.
 
@@ -194,7 +194,7 @@ estructura real de cada instrumento en el lump `GENMIDI` es:
 175 × 32 bytes de nombres de instrumento (no usados para reproducir)
 ```
 
-Total: 8 + 175×36 + 175×32 = 11.908 bytes — coincide exactamente con el
+Total: 8 + 175×36 + 175×32 = 11.908 bytes - coincide exactamente con el
 tamaño real del lump verificado en el WAD.
 
 El código anterior asumía en cambio que cada instrumento ocupaba 68 bytes
@@ -202,7 +202,7 @@ consecutivos (36+32 fusionados) y que cada operador tenía solo 5 campos ya
 combinados. Esto "casualmente" leía casi correctamente el instrumento 0 (el
 offset inicial coincide), pero se desalineaba cada vez más para instrumentos
 posteriores, hasta leer directamente bytes de la sección de nombres (texto
-ASCII) como si fueran registros OPL2 — exactamente lo que producía el
+ASCII) como si fueran registros OPL2 - exactamente lo que producía el
 "pitido sin timbre" (el operador modulador nunca se cargaba con datos
 coherentes) y el "ruido de TV" puntual en instrumentos específicos donde la
 lectura desalineada caía sobre valores de feedback/forma de onda extremos.
@@ -214,7 +214,7 @@ Corregido reescribiendo las macros de acceso y `opl_load_instrument()` en
 `src/opl2test_nuked.c` con los offsets reales. Resultado: los instrumentos
 suenan reconociblemente distintos (piano, órgano, guitarra, bajo) y `D_E1M1`
 completo, con ambos fixes, es reconocible como música real de Doom
-("suena como Doom" — confirmado escuchando el WAV).
+("suena como Doom" - confirmado escuchando el WAV).
 
 Los WAV de cada iteración de esta sesión quedaron en `test_audio/loop/`
 (archivos `01_...` a `06_e1m1_tempo_and_genmidi_fixed.wav`) como referencia.
@@ -241,7 +241,7 @@ Se trajeron `musserver_hpux.c`, `i_sound.c` y el target de Makefile del commit
 pipes hacia un proceso `musserver-hpux` separado que sintetiza y envía PCM
 de vuelta). Se le aplicaron los mismos dos fixes de la sección 6 (tempo
 140Hz, estructura GENMIDI de 36 bytes) al sintetizador OPL2 casero de
-`musserver_hpux.c` (nota: ese sintetizador casero, no Nuked-OPL2 — un
+`musserver_hpux.c` (nota: ese sintetizador casero, no Nuked-OPL2 - un
 comentario del propio código explica que Nuked-OPL2 dentro del servidor en
 vivo llegó a consumir ~84% de CPU, inviable junto al ~85% que ya usa el
 render de Doom solo).
@@ -256,7 +256,7 @@ real**, pero el juego "tiende a pegarse" y la música se entrecorta.
 Perfilado de CPU en vivo (`ps -eo pid,pcpu,comm` muestreado cada segundo)
 durante 20s de juego mostró: `musserver-hpux` se estabiliza en **menos del
 1% de CPU**; `doom-hpux` sube solo él a ~18-19% acumulado en el mismo lapso
-— consistente con que el render del juego ya era pesado antes de agregar
+- consistente con que el render del juego ya era pesado antes de agregar
 música. El log de `musserver` mostraba una tasa de descarte de frames
 creciente y alta (`dropped` subiendo sin techo). Conclusión: Doom no
 drenaba el pipe de música con la regularidad necesaria porque su propio
@@ -273,7 +273,7 @@ agrandar más el buffer dejó de ayudar (techo). Aislando con `-warp 1 1`
 concentraba la mayoría de los descartes) el nivel de corte ya rozaba el
 **silencio natural de la propia partitura** (7,0% medido en la referencia
 limpia validada en la sección 6, contra 6,1-8,8% medido en vivo según la
-corrida) — es decir, el pipeline ya estaba prácticamente al límite de lo
+corrida) - es decir, el pipeline ya estaba prácticamente al límite de lo
 que un buffer más grande podía arreglar.
 
 ### 8.3 Timer real (SIGALRM/setitimer) para desacoplar el audio del render
@@ -294,7 +294,7 @@ en vivo.
 
 Ante la duda razonable de "¿esta máquina realmente no puede reproducir
 música mientras corre el juego?", se reconsideró la arquitectura de fondo:
-`musserver-hpux` corría como **proceso separado** — aunque su cómputo es
+`musserver-hpux` corría como **proceso separado** - aunque su cómputo es
 barato (<1% CPU), el *costo de comunicación entre procesos* (fork, pipes,
 esperar a que el scheduler del SO le dé tiempo a un segundo proceso) en una
 máquina de un solo núcleo puede pesar más que la síntesis en sí.
@@ -303,7 +303,7 @@ Se creó `src/hp_music.c` (+ `hp_music.h`): el mismo motor de síntesis OPL2 y
 parser MUS de `musserver_hpux.c` (con los fixes de tempo/GENMIDI ya
 incluidos), pero reestructurado de un modelo "push a un pipe" a un modelo
 "generar N muestras bajo demanda" (`HPMusic_Generate(buf, n)`), llamado como
-una función común directamente desde `I_SubmitSound()` — sin `fork()`, sin
+una función común directamente desde `I_SubmitSound()` - sin `fork()`, sin
 `pipe()`, sin `popen()`, sin segundo proceso que el sistema operativo tenga
 que planificar. `i_sound.c` se reescribió para que `I_InitMusic`/
 `I_PlaySong`/`I_RegisterSong`/etc. llamen directamente a `HPMusic_*` en vez
@@ -313,12 +313,12 @@ de mandar comandos de texto por un pipe. El target `musserver_hp` y el flag
 Nota de implementación: como `I_SubmitSound()` ahora puede ejecutarse
 dentro de un manejador de señal real (`SIGALRM`), el volcado de diagnóstico
 a `/tmp/aserver_capture.raw` se reescribió usando `open()`/`write()`/
-`close()` en crudo en vez de `fopen()`/`fwrite()` — las funciones de stdio
+`close()` en crudo en vez de `fopen()`/`fwrite()` - las funciones de stdio
 no son seguras de usar dentro de una señal (`fprintf` ya no aparece en
 ningún punto de la ruta caliente de audio, se verificó explícitamente).
 
 Compilado y probado igual que los pasos anteriores: sin errores. La captura
-real de Aserver con esta arquitectura dio **6,7% de silencio — prácticamente
+real de Aserver con esta arquitectura dio **6,7% de silencio - prácticamente
 igual al 7,0% intrínseco de la partitura**. A nivel de señal, el pipeline de
 audio ya no tiene margen de mejora relevante.
 
@@ -329,9 +329,9 @@ en vivo. Se hizo la prueba decisiva: correr el mismo nivel **sin música**
 (`-nomusic`) y comparar. Resultado: **el juego se traba exactamente igual
 sin música**, y la traba persiste incluso reduciendo la resolución en
 pantalla. Esto confirma que la traba/corte percibido **no tiene relación
-con el trabajo de música de esta sesión** — es una característica de
+con el trabajo de música de esta sesión** - es una característica de
 rendimiento preexistente del motor de Doom en este hardware específico (ya
-se sabía por `docs/machine-setup.md` que el render solo, sin ningún audio,
+se sabía por `docs/02-machine-setup.md` que el render solo, sin ningún audio,
 corre al ~85% de CPU en esta máquina). Cualquier trabajo futuro sobre esa
 traba es un problema de rendimiento general del motor/hardware, separado
 del alcance de esta investigación.
@@ -343,17 +343,17 @@ OPL2/GENMIDI en proceso (`hp_music.c`), sin proceso externo, alimentado por
 un timer real independiente del render.** Validado por oído en el hardware
 real: tempo correcto, instrumentos reconocibles, percusión, canciones
 completas. La sensación de "traba" que persiste es un problema de
-rendimiento general de Doom en esta máquina, no de la música — confirmado
+rendimiento general de Doom en esta máquina, no de la música - confirmado
 reproduciendo sin música y viendo la misma traba.
 
 Archivos clave de la implementación final:
-- `src/hp_music.c` / `src/hp_music.h` — sintetizador OPL2/parser MUS en
+- `src/hp_music.c` / `src/hp_music.h` - sintetizador OPL2/parser MUS en
   proceso.
-- `src/i_sound.c` — Music API (`I_InitMusic` etc.) llamando a `HPMusic_*`;
+- `src/i_sound.c` - Music API (`I_InitMusic` etc.) llamando a `HPMusic_*`;
   timer `SIGALRM`/`setitimer` (`I_HPStartAudioTimer`/`I_HPStopAudioTimer`).
-- `src/d_main.c` — bloqueo de `SIGALRM` alrededor de las llamadas
+- `src/d_main.c` - bloqueo de `SIGALRM` alrededor de las llamadas
   síncronas a `I_UpdateSound()`/`I_SubmitSound()` del bucle principal.
-- `src/Makefile` — `hp_music.o` agregado al build; target `musserver_hp` y
+- `src/Makefile` - `hp_music.o` agregado al build; target `musserver_hp` y
   flag `-DMUSSERV` eliminados (ya no aplican).
 
 Pendiente (fuera del alcance de esta investigación): investigar el
@@ -362,7 +362,7 @@ rendimiento general del motor en este hardware, independiente del audio.
 ## 10. Investigación del "chirrido" residual (sesión de optimización de CPU)
 
 Tras el trabajo de optimización de CPU (`+O3 +DA2.0 +DS2.0 +Ofastaccess`,
-ver `docs/investigacion-rendimiento-cpu.md`), con las trabas del motor ya
+ver `docs/06-investigacion-rendimiento-cpu.md`), con las trabas del motor ya
 muy reducidas, el usuario reportó un problema distinto y hasta entonces
 enmascarado por las trabas: un **chirrido** intermitente en la música de
 E1M1 ("como cuando un parlante está suelto o haciendo mal contacto"),
@@ -377,7 +377,7 @@ de instrumentos?" se construyó un **renderizador offline** (no forma parte
 del build de Doom, vive solo como herramienta de diagnóstico de sesión):
 carga los lumps `GENMIDI` y una canción `MUS` directamente de
 `shareware/doom1.wad`, y llama a `HPMusic_Init`/`HPMusic_LoadSong`/
-`HPMusic_Generate` — el mismo código que corre en el juego — para escribir
+`HPMusic_Generate` - el mismo código que corre en el juego - para escribir
 un `.wav`, sin motor de Doom, sin timer `SIGALRM`, sin restricciones de
 tiempo real. Cualquier ruido que aparezca ahí es un bug de la síntesis en
 sí, no de cómo se integra con el juego.
@@ -429,10 +429,10 @@ investigado (ver 10.4).
 
 Aislando el instrumento de percusión 139 (hi-hat abierto, nota fija de
 GENMIDI = 79) se midieron saltos de muestra a muestra de hasta 18516 (57%
-del rango completo) al renderizarlo con el sintetizador casero — algo que
+del rango completo) al renderizarlo con el sintetizador casero - algo que
 Nuked-OPL2, rindiendo el mismo instrumento/nota, no mostraba en absoluto
 (máximo 3579). La causa: la nota fija de ese instrumento, con su
-multiplicador (`mult`), da una frecuencia de portadora de **~7840 Hz** —
+multiplicador (`mult`), da una frecuencia de portadora de **~7840 Hz** -
 muy por encima del límite de Nyquist a la tasa de muestreo de este
 sintetizador (11025 Hz → Nyquist = 5512 Hz). Una frecuencia por encima de
 Nyquist se "pliega" (fold-back aliasing) hacia una frecuencia completamente
@@ -442,7 +442,7 @@ Hardware real / Nuked-OPL2 no sufren esto porque sintetizan internamente a
 una tasa mucho más alta (~49716 Hz) y remuestrean con un filtro pasa-bajos
 adecuado al bajar a la tasa de salida. Implementar sobremuestreo con
 filtrado aquí habría sido caro en CPU (justamente lo que esta máquina no
-sobra, ver `docs/investigacion-rendimiento-cpu.md`), así que se aplicó un
+sobra, ver `docs/06-investigacion-rendimiento-cpu.md`), así que se aplicó un
 límite más barato: acotar la frecuencia máxima representable justo debajo
 de Nyquist en `note_phase_step()` (`freq > SAMPLE_RATE*0.45` se recorta a
 ese valor). El costo es precisión de tono en un puñado de instrumentos de
@@ -454,12 +454,12 @@ instrumento 139 en aislamiento pasaron de 70 a 0.
 ### 10.5 Bug: corte abrupto de envolvente (release/decay lineales)
 
 Inspeccionando la forma de onda en Audacity, el usuario identificó caídas
-verticales duras al final de cada nota — no un problema de instrumento
+verticales duras al final de cada nota - no un problema de instrumento
 sino de la forma en que la amplitud termina. La envolvente de este
 sintetizador es **lineal** (una escala 0-511 restada a ritmo constante por
 muestra), y para tasas de decay/release rápidas (rango 12-15 de la tabla
 `rate_to_inc`, hasta 512 por muestra) puede pasar de amplitud casi máxima a
-cero en **una sola muestra** — un corte instantáneo y audible como un
+cero en **una sola muestra** - un corte instantáneo y audible como un
 "tic". El chip OPL2 real trabaja la envolvente en dominio logarítmico
 (dB), donde el mismo "release rápido" da un decaimiento multiplicativo que
 naturalmente se suaviza al acercarse a cero, sin el filo duro del modelo
@@ -469,7 +469,7 @@ En vez de reescribir todo el modelo de envolvente a dominio logarítmico
 (cambio mucho más invasivo para un beneficio acotado), se limitó la
 velocidad máxima de caída de decay y release para que ningún segmento
 pueda completarse en menos de `ENV_REL_MIN_SAMPLES` = 48 muestras (~4.3 ms
-a 11025 Hz) — sigue siendo rápido/imperceptible como un fundido, pero ya
+a 11025 Hz) - sigue siendo rápido/imperceptible como un fundido, pero ya
 no es una discontinuidad de una sola muestra. Nueva función
 `rate_to_inc_release()` usada tanto para `env_dec` como `env_rel` del
 modulador y la portadora.
@@ -480,13 +480,13 @@ El usuario notó, mirando la forma de onda en Audacity, que la señal
 mezclada estaba mayormente en la mitad positiva del eje Y en vez de
 oscilar simétricamente. Varias formas de onda del OPL2 (`opl_wave()` casos
 1-3: seno recortado, seno rectificado completo, cuarto de seno) son, **por
-diseño del chip**, asimétricas — su promedio no es cero (esto es
+diseño del chip**, asimétricas - su promedio no es cero (esto es
 intencional, parte del timbre de instrumentos con distorsión/borde, como
 la guitarra distorsionada de E1M1). En hardware real esto no es audible
 como sesgo porque la salida de audio tiene un capacitor de acoplamiento
 (filtro pasa-altos analógico) que remueve cualquier componente DC antes de
 llegar al parlante. Este sintetizador software escribe las muestras
-crudas directamente, sin ese filtrado — y un sesgo DC no filtrado no es
+crudas directamente, sin ese filtrado - y un sesgo DC no filtrado no es
 solo un problema visual: cada vez que una nota con forma de onda
 asimétrica empieza o termina, el nivel DC salta de golpe, y un salto de DC
 es en sí mismo un transitorio de banda ancha (un "click").
@@ -507,11 +507,11 @@ de canal: no hubo ninguno en el primer minuto de la canción). La causa
 real: `opl_mix_sample()` sumaba las muestras de todos los canales OPL2
 activos y dividía por **la cantidad de canales activos en ese instante**
 (`sum /= n`). Cada vez que una nota nueva activaba un canal antes inactivo
-— incluso si esa nota recién estaba empezando su ataque y casi no
-aportaba volumen todavía — `n` subía de golpe, y eso diluía
+- incluso si esa nota recién estaba empezando su ataque y casi no
+aportaba volumen todavía - `n` subía de golpe, y eso diluía
 instantáneamente el volumen de **todas las demás** notas que ya estaban
 sonando. Lo mismo al revés cuando un canal se apagaba. El resultado es un
-"bombeo" (ducking) de volumen cada vez que entra o sale una voz — un
+"bombeo" (ducking) de volumen cada vez que entra o sale una voz - un
 defecto de la estrategia de mezcla, no de ningún instrumento puntual, y
 consistente con los cientos de eventos de nota por minuto típicos de
 cualquier canción.

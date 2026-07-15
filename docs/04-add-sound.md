@@ -1,3 +1,11 @@
+> **Historical snapshot (June 2011).** Documents the first working sound
+> effects implementation (HP Alib / `simpleAudio`, SFX only - no music
+> yet). Accurate for what it covers, but superseded by
+> [`docs/05-music-investigation.md`](05-music-investigation.md) for the
+> full audio story, including the in-process OPL2/GENMIDI music
+> synthesizer and every bug fixed since. See
+> [`docs/00-index.md`](00-index.md) for the full chronological list.
+
 # Sound implementation for HP-UX (HP Alib / simpleAudio)
 
 ## Context

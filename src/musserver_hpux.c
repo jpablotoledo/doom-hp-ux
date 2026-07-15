@@ -14,12 +14,12 @@
  * Audio: 11025 Hz, 16-bit signed, stereo, via HP simpleAudio/Alib.
  *
  * OPL2 synthesis: hand-rolled software FM synth (NOT the Nuked-OPL2-Lite
- * cycle-accurate emulator — that was tried and measured to consume ~84%
+ * cycle-accurate emulator - that was tried and measured to consume ~84%
  * of this machine's single PA-RISC core, starving Doom's own CPU budget
  * and making the game unplayably slow). This synth is much cheaper: a
  * single sine table with waveform variants, direct GENMIDI-driven FM,
  * and log-scale TL attenuation matching real OPL2 (0.75dB/unit) for
- * both modulator AND carrier — an earlier version of this file used a
+ * both modulator AND carrier - an earlier version of this file used a
  * linear TL scale for the carrier, which made background voices play
  * far louder than they should and produced a dense wall-of-noise effect
  * with many simultaneous channels.
@@ -40,7 +40,7 @@
 #include "simpleAudio.h"
 
 /* ============================================================
- * Diagnostic log (must be first — called from functions below)
+ * Diagnostic log (must be first - called from functions below)
  * ============================================================ */
 
 static FILE *logfp = NULL;
@@ -70,7 +70,7 @@ static void muslogf(const char *fmt, int a, int b)
 #define MUS_TEMPO_HZ    140         /* MUS tic rate (real spec value; was
                                        wrongly 70 here, which played every
                                        song at half speed/pitch-shifted-down
-                                       feel — confirmed by ear and fixed via
+                                       feel - confirmed by ear and fixed via
                                        the opl2test_nuked.c standalone test
                                        harness before touching this file) */
 #define FRAME_SAMPLES   (SAMPLE_RATE / MUS_TEMPO_HZ)   /* ~78 */
@@ -81,7 +81,7 @@ static void muslogf(const char *fmt, int a, int b)
 #define GENMIDI_INSTR   (GENMIDI_NUM_MELODIC + GENMIDI_NUM_PERC)
 #define GENMIDI_ISIZ    36          /* real genmidi_instr_t size: was wrongly
                                        68 (36 binary + 32 name, treated as
-                                       one interleaved record) — the real
+                                       one interleaved record) - the real
                                        file is 3 separate contiguous blocks:
                                        header, N*36-byte binary structs,
                                        N*32-byte name strings. See
@@ -98,7 +98,7 @@ static void muslogf(const char *fmt, int a, int b)
 
 /* Real genmidi_voice_t layout (16 bytes): modulator op(6) + feedback(1)
  * + carrier op(6) + unused(1) + base_note_offset(s16 LE, unused here).
- * Each op(6) = tremolo,attack,sustain,waveform,scale,level — scale and
+ * Each op(6) = tremolo,attack,sustain,waveform,scale,level - scale and
  * level are separate bytes that must be OR'd for the OPL 0x40 register;
  * this simplified synth has no key-scaling, so it just uses `level`
  * directly as the 0-63 total-level and ignores `scale`/KSL. */
@@ -168,7 +168,7 @@ typedef struct {
 
 /* Crossfade length on retrigger/voice-steal: forcing phase=0 AND env=0
  * simultaneously (the naive key-on) causes an instant amplitude
- * discontinuity — audible as a broadband click/pop, and with many
+ * discontinuity - audible as a broadband click/pop, and with many
  * channels retriggering frequently (as real MUS songs do) these clicks
  * stack into what sounds like continuous noise. 32 samples (~2.9ms) is
  * short enough to be inaudible as a separate event but long enough to
@@ -247,7 +247,7 @@ static int rate_to_inc(int rate, int max_val)
 }
 
 /* preserve_phase: keep current phase/env instead of snapping to 0/max.
- * Used together with the render-time crossfade (FADE_SAMPLES) below —
+ * Used together with the render-time crossfade (FADE_SAMPLES) below -
  * this alone isn't enough to fully avoid clicks on a note change (a
  * different note needs phase=0 for correct pitch), so the real
  * click-avoidance mechanism is the output crossfade in render_channel().
@@ -259,7 +259,7 @@ static int rate_to_inc(int rate, int max_val)
  * chirp/noise problem. Reverted to real-OPL2-hardware behavior: an
  * operator with AR=0 never attacks and stays silent. This does mute a
  * few D_INTRO/E1M1 voices whose GENMIDI data looks degenerate anyway
- * (all-zero ADSR, garbage flags field) — better silent than noisy. */
+ * (all-zero ADSR, garbage flags field) - better silent than noisy. */
 static void op_key_on(opl_op_t *op, unsigned int step, int preserve_phase)
 {
     if (!preserve_phase)
@@ -418,9 +418,9 @@ static void load_instrument(opl_chan_t *ch, int instr_idx, int midi_note, int ve
  * the <<22 shift into the 32-bit phase accumulator. Matches the scale
  * derived from Nuked-OPL2-Lite's real phase generator (pg_phase_out is
  * 16-bit with 64 units/entry; our sine table is 8x theirs, and our
- * phase has 2^22 units/entry vs their 64 — combined scale factor 512).
+ * phase has 2^22 units/entry vs their 64 - combined scale factor 512).
  * Both modulator AND carrier TL use the same log attenuation table
- * (0.75dB/unit) — using a linear scale for the carrier was a bug that
+ * (0.75dB/unit) - using a linear scale for the carrier was a bug that
  * made mid/high-TL voices far louder than real hardware, causing many
  * simultaneous channels to compete near full volume instead of most
  * sitting low in the mix. */
@@ -643,7 +643,7 @@ static int mus_process_tic(void)
                 opl_ch = alloc_opl_channel(chan, note);
                 was_active = opl_chan[opl_ch].active;
                 /* Retriggering the same (chan,note) already active on this OPL
-                 * channel: preserve phase too (musically correct — same pitch).
+                 * channel: preserve phase too (musically correct - same pitch).
                  * A genuinely new note still resets phase for correct pitch,
                  * but EITHER way gets a crossfade-in below to avoid a click. */
                 same_note = was_active &&
@@ -792,15 +792,15 @@ static void audio_close(void)
  * History: the pipe to Doom fills up and write() fails with EAGAIN on
  * roughly a third of all frames under normal gameplay (SFX bursts,
  * throttled reads on Doom's side, etc). An earlier version silently
- * dropped the whole frame on EAGAIN — mus_process_tic() had already
+ * dropped the whole frame on EAGAIN - mus_process_tic() had already
  * advanced the song position, so the dropped audio was gone forever,
  * causing audible clicks/noise. A later attempt fixed that by only
- * calling mus_process_tic() once a frame was fully flushed to the pipe —
+ * calling mus_process_tic() once a frame was fully flushed to the pipe -
  * but that ties the song's TEMPO to the pipe's congestion: with ~30% of
  * iterations blocked, the whole song drags in real time (measured:
  * needed ~1.85x playback speed to sound right again), even though the
  * pitch of each individual note stays mathematically correct (confirmed
- * via FFT against expected GENMIDI frequencies) — a *tempo* bug wearing
+ * via FFT against expected GENMIDI frequencies) - a *tempo* bug wearing
  * a *pitch* bug's clothes.
  *
  * Fix: generate a new frame from the current channel state EVERY loop
@@ -809,7 +809,7 @@ static void audio_close(void)
  * as much of the queue as the non-blocking pipe currently accepts. Only
  * if the queue fills completely (sustained congestion beyond ~450ms,
  * well past normal jitter) do we drop the oldest queued frame to make
- * room — a single ~14ms gap, not a dragged-out tempo. */
+ * room - a single ~14ms gap, not a dragged-out tempo. */
 #define QUEUE_FRAMES 32   /* ~457ms of buffered audio at 70Hz */
 
 static short queue_buf[QUEUE_FRAMES][FRAME_SAMPLES * 2];
@@ -986,7 +986,7 @@ int main(int argc, char *argv[])
             close(i);
     }
 
-    /* Open log after the fd close loop — logfp gets fd 3 (first clean fd).
+    /* Open log after the fd close loop - logfp gets fd 3 (first clean fd).
      * If opened before the loop it would be closed immediately. */
     logfp = fopen("/tmp/musserver.log", "w");
     muslog("musserver: started");
@@ -1099,7 +1099,7 @@ int main(int argc, char *argv[])
         }
 
         /* Advance the song and generate its next frame unconditionally
-         * (only while playing) — tempo must track real time, not pipe
+         * (only while playing) - tempo must track real time, not pipe
          * congestion. flush_audio_queue() runs every iteration regardless,
          * so already-queued audio keeps draining even while paused/stopped
          * instead of sitting stuck. */

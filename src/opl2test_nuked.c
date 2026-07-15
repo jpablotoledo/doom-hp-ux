@@ -1,5 +1,5 @@
 /*
- * opl2test_nuked.c — OPL2 synthesis test using Nuked-OPL2-Lite (nukeykt),
+ * opl2test_nuked.c - OPL2 synthesis test using Nuked-OPL2-Lite (nukeykt),
  * a cycle-accurate emulator verified against real YM3812 hardware.
  *
  * Replaces the hand-rolled OPL2 synth in opl2test_hpux.c, which after
@@ -49,12 +49,12 @@
  * 68-byte (36+32) records, which only happened to line up for
  * instrument 0 and drifted further out of alignment (eventually
  * reading past the binary section into the name strings) for every
- * instrument after that — this is what made every instrument sound
+ * instrument after that - this is what made every instrument sound
  * like a plain tone (modulator data effectively randomized/missing)
  * and made some (e.g. instrument 39) produce outright noise.
  *
  * scale/level are two separate bytes that must be OR'd together to
- * form the single OPL 0x40 (KSL/output-level) register write — they
+ * form the single OPL 0x40 (KSL/output-level) register write - they
  * are NOT already-combined verbatim register bytes.
  * ============================================================ */
 
@@ -146,7 +146,7 @@ static void opl_load_instrument(int ch, int instr_idx, int midi_note, int veloci
     car_off = op_offset[ch] + 3;
 
     /* Modulator. scale/level are two separate GENMIDI bytes that must be
-     * OR'd together for the single 0x40 (KSL/output-level) register —
+     * OR'd together for the single 0x40 (KSL/output-level) register -
      * see LoadOperatorData() in Chocolate Doom's i_oplmusic.c. */
     mod_level = GM_MOD_SCALE(instr_idx,0) | GM_MOD_LEVEL(instr_idx,0);
     OPL2_WriteReg(&chip, 0x20 + mod_off, GM_MOD_TREM(instr_idx,0));
@@ -184,7 +184,7 @@ static void opl_key_off(int ch)
 {
     /* Re-issue 0xB0 with key-on bit cleared, keeping block/fnum high bits.
      * We don't track prior fnum/block here since MUS note-off doesn't need
-     * them — just clear bit 5. Simplest: write block=0 without key-on;
+     * them - just clear bit 5. Simplest: write block=0 without key-on;
      * the channel's envelope goes to release regardless of fnum value. */
     OPL2_WriteReg(&chip, 0xB0 + ch, 0x00);
 }
@@ -439,7 +439,7 @@ static void write_wav_header(int num_samples)
  * Song playback: growable output buffer, MUS-tic-driven loop
  * ============================================================ */
 
-/* Raw little-endian bytes, not native shorts — see opl2test_hpux.c's
+/* Raw little-endian bytes, not native shorts - see opl2test_hpux.c's
  * out_push() for why: HP-UX PA-RISC is big-endian, standard WAV PCM
  * data is always little-endian. out_len stays in "logical short" units. */
 static unsigned char *out_buf = NULL;
@@ -598,7 +598,7 @@ int main(int argc, char *argv[])
         return 1;
 
     OPL2_Reset(&chip, SAMPLE_RATE);
-    /* Enable waveform select (register 0x01, bit 5) — without this the
+    /* Enable waveform select (register 0x01, bit 5) - without this the
      * chip silently ignores non-sine OPL2_WriteReg(0xE0+op, ...) writes
      * and every operator falls back to plain sine, regardless of what
      * GENMIDI's wave field says. Real AdLib/OPL2 drivers (including
